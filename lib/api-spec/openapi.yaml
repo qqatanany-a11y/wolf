@@ -10,6 +10,14 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: dashboard
+    description: Live club operations
+  - name: sessions
+    description: Playing sessions and timers
+  - name: cafeteria
+    description: Cafeteria products and orders
+  - name: reports
+    description: Revenue and profit reports
 paths:
   /healthz:
     get:
@@ -24,6 +32,250 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get the live club dashboard
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /resources:
+    get:
+      operationId: listResources
+      tags: [dashboard]
+      summary: List club tables and PlayStations
+      responses:
+        "200":
+          description: Club resources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Resource"
+  /resources/{id}:
+    patch:
+      operationId: updateResource
+      tags: [dashboard]
+      summary: Update an individual resource rate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceUpdate"
+      responses:
+        "200":
+          description: Updated resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resource"
+        "404":
+          description: Resource not found
+  /sessions:
+    get:
+      operationId: listSessions
+      tags: [sessions]
+      summary: List playing sessions
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, completed, all]
+            default: active
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Playing sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+    post:
+      operationId: createSession
+      tags: [sessions]
+      summary: Start a table or PlayStation session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionInput"
+      responses:
+        "201":
+          description: Started session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+  /sessions/{id}:
+    patch:
+      operationId: updateSession
+      tags: [sessions]
+      summary: Stop, extend, or adjust a session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionUpdate"
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Session not found
+  /products:
+    get:
+      operationId: listProducts
+      tags: [cafeteria]
+      summary: List cafeteria products
+      responses:
+        "200":
+          description: Cafeteria products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [cafeteria]
+      summary: Add a cafeteria product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Created product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [cafeteria]
+      summary: List cafeteria orders
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, paid, all]
+            default: all
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Cafeteria orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: createOrder
+      tags: [cafeteria]
+      summary: Create a cafeteria order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+  /orders/{id}/pay:
+    post:
+      operationId: payOrder
+      tags: [cafeteria]
+      summary: Record payment for a cafeteria order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentInput"
+      responses:
+        "200":
+          description: Paid order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+  /reports/profit:
+    get:
+      operationId: getProfitReport
+      tags: [reports]
+      summary: Get revenue and profit report
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Profit report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfitReport"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +285,206 @@ components:
           type: string
       required:
         - status
+    Resource:
+      type: object
+      required: [id, name, kind, status, hourlyRate]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        kind:
+          type: string
+          enum: [snooker, billiards, playstation]
+        status:
+          type: string
+          enum: [available, active, overdue]
+        hourlyRate: { type: number }
+        activeSessionId: { type: ["integer", "null"] }
+        activeSessionStartedAt: { type: ["string", "null"], format: date-time }
+        activeSessionEndsAt: { type: ["string", "null"], format: date-time }
+        remainingSeconds: { type: ["integer", "null"] }
+    ResourceUpdate:
+      type: object
+      required: [hourlyRate]
+      properties:
+        hourlyRate: { type: number, minimum: 0 }
+    Session:
+      type: object
+      required: [id, resourceId, resourceName, resourceKind, status, mode, startedAt, hourlyRate, total]
+      properties:
+        id: { type: integer }
+        resourceId: { type: integer }
+        resourceName: { type: string }
+        resourceKind:
+          type: string
+          enum: [snooker, billiards, playstation]
+        status:
+          type: string
+          enum: [active, completed, overdue]
+        mode:
+          type: string
+          enum: [open, limited]
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: ["string", "null"], format: date-time }
+        endsAt: { type: ["string", "null"], format: date-time }
+        durationMinutes: { type: ["integer", "null"] }
+        elapsedSeconds: { type: integer }
+        remainingSeconds: { type: ["integer", "null"] }
+        hourlyRate: { type: number }
+        total: { type: number }
+        paymentStatus:
+          type: string
+          enum: [unpaid, paid]
+        paymentMethod:
+          type: ["string", "null"]
+          enum: [cash, cliq, null]
+    SessionInput:
+      type: object
+      required: [resourceId, mode]
+      properties:
+        resourceId: { type: integer }
+        mode:
+          type: string
+          enum: [open, limited]
+        durationMinutes: { type: ["integer", "null"], minimum: 1 }
+    SessionUpdate:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [stop, extend]
+        durationMinutes: { type: ["integer", "null"], minimum: 1 }
+        paymentMethod:
+          type: ["string", "null"]
+          enum: [cash, cliq, null]
+    Product:
+      type: object
+      required: [id, name, category, price, cost, isActive]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        category: { type: string }
+        price: { type: number }
+        cost: { type: number }
+        isActive: { type: boolean }
+    ProductInput:
+      type: object
+      required: [name, category, price, cost]
+      properties:
+        name: { type: string, minLength: 1 }
+        category: { type: string, minLength: 1 }
+        price: { type: number, minimum: 0 }
+        cost: { type: number, minimum: 0 }
+    Order:
+      type: object
+      required: [id, items, status, subtotal, total, profit, createdAt]
+      properties:
+        id: { type: integer }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        status:
+          type: string
+          enum: [open, paid]
+        subtotal: { type: number }
+        total: { type: number }
+        profit: { type: number }
+        paymentMethod:
+          type: ["string", "null"]
+          enum: [cash, cliq, null]
+        createdAt: { type: string, format: date-time }
+    OrderItem:
+      type: object
+      required: [productId, productName, quantity, unitPrice, lineTotal]
+      properties:
+        productId: { type: integer }
+        productName: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { type: number }
+        lineTotal: { type: number }
+    OrderInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OrderItemInput"
+    OrderItemInput:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: integer }
+        quantity: { type: integer, minimum: 1 }
+    PaymentInput:
+      type: object
+      required: [paymentMethod]
+      properties:
+        paymentMethod:
+          type: string
+          enum: [cash, cliq]
+    Dashboard:
+      type: object
+      required: [date, resources, revenue, profit, activeSessions, openOrders, paymentMix, recentActivity]
+      properties:
+        date: { type: string, format: date }
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/Resource"
+        revenue: { type: number }
+        profit: { type: number }
+        activeSessions: { type: integer }
+        openOrders: { type: integer }
+        paymentMix:
+          type: object
+          required: [cash, cliq]
+          properties:
+            cash: { type: number }
+            cliq: { type: number }
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/Activity"
+    Activity:
+      type: object
+      required: [id, type, label, amount, createdAt]
+      properties:
+        id: { type: integer }
+        type:
+          type: string
+          enum: [session, cafeteria]
+        label: { type: string }
+        amount: { type: number }
+        paymentMethod:
+          type: ["string", "null"]
+          enum: [cash, cliq, null]
+        createdAt: { type: string, format: date-time }
+    ProfitReport:
+      type: object
+      required: [from, to, revenue, cost, profit, sessionRevenue, cafeteriaRevenue, byPaymentMethod, byDay]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        revenue: { type: number }
+        cost: { type: number }
+        profit: { type: number }
+        sessionRevenue: { type: number }
+        cafeteriaRevenue: { type: number }
+        byPaymentMethod:
+          type: object
+          required: [cash, cliq]
+          properties:
+            cash: { type: number }
+            cliq: { type: number }
+        byDay:
+          type: array
+          items:
+            type: object
+            required: [date, revenue, profit]
+            properties:
+              date: { type: string, format: date }
+              revenue: { type: number }
+              profit: { type: number }
 

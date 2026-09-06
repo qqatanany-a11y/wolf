@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Club Operations"
+description = "A live management dashboard for a billiards and snooker club, tracking table and PlayStation sessions, cafeteria orders, cash and CliQ payments, and profit reporting."
+version = "1.0.0"
+id = "artifacts/club-operations"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18920
+
+[services.development]
+run = "pnpm --filter @workspace/club-operations run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/club-operations", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/club-operations/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18920"
+BASE_PATH = "/"

@@ -1,0 +1,330 @@
+import { useMemo, useState, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
+import {
+  Activity,
+  ArrowDownRight,
+  ArrowUpRight,
+  BarChart3,
+  Bell,
+  CircleDot,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  CircleDollarSign,
+  Clock3,
+  Coffee,
+  CreditCard,
+  Gamepad2,
+  LayoutDashboard,
+  Menu,
+  MoreHorizontal,
+  Package,
+  Plus,
+  ReceiptText,
+  RefreshCw,
+  Settings,
+  SlidersHorizontal,
+  Square,
+  Table2,
+  TimerReset,
+  Utensils,
+  WalletCards,
+  X,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  getGetDashboardQueryKey,
+  getGetProfitReportQueryKey,
+  getListOrdersQueryKey,
+  getListProductsQueryKey,
+  getListResourcesQueryKey,
+  getListSessionsQueryKey,
+  useCreateOrder,
+  useCreateProduct,
+  useCreateSession,
+  useGetDashboard,
+  useGetProfitReport,
+  useListOrders,
+  useListProducts,
+  useListResources,
+  useListSessions,
+  usePayOrder,
+  useUpdateResource,
+  useUpdateSession,
+} from '@workspace/api-client-react';
+import { ErrorBoundary } from '@/components/error-boundary';
+import { Toaster } from '@/components/ui/toaster';
+import NotFound from '@/pages/not-found';
+
+const queryClient = new QueryClient();
+const money = (value: number | undefined) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'JOD', currencyDisplay: 'code' }).format(value ?? 0);
+const dateLabel = (value: string) =>
+  new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(value));
+const fullDateLabel = (value: string | Date = new Date()) =>
+  new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(value));
+const timeLabel = (value: string) =>
+  new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(value));
+const today = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+const secondsLabel = (seconds: number | null | undefined) => {
+  const safe = Math.max(0, seconds ?? 0);
+  return `${String(Math.floor(safe / 3600)).padStart(2, '0')}:${String(Math.floor((safe % 3600) / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+};
+
+function IconMark() {
+  return (
+    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))] shadow-sm">
+      <CircleDot size={21} strokeWidth={2.2} />
+    </div>
+  );
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  const [location, setLocation] = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const nav = [
+    { href: '/', label: 'Live floor', icon: LayoutDashboard },
+    { href: '/sessions', label: 'Sessions', icon: TimerReset },
+    { href: '/cafeteria', label: 'Cafeteria', icon: Coffee },
+    { href: '/reports', label: 'Reports', icon: BarChart3 },
+    { href: '/settings', label: 'Settings', icon: Settings },
+  ];
+  return (
+    <div className="app-shell grain flex bg-background text-foreground">
+      <aside className={`${mobileOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform md:relative md:translate-x-0`}>
+        <div className="mb-9 flex items-center gap-3 px-2">
+          <IconMark />
+          <div>
+            <div className="font-extrabold tracking-[-0.03em] text-sidebar-foreground">Club Operations</div>
+            <div className="mono mt-0.5 text-[9px] uppercase tracking-[0.18em] text-sidebar-foreground/45">Control room / 01</div>
+          </div>
+        </div>
+        <div className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-sidebar-foreground/40">Navigation</div>
+        <nav className="space-y-1">
+          {nav.map((item) => {
+            const active = location === item.href;
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                data-testid={`link-${item.label.toLowerCase().replace(' ', '-')}`}
+                onClick={() => setMobileOpen(false)}
+                className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold ${active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'}`}
+              >
+                <Icon size={17} strokeWidth={active ? 2.4 : 1.8} />
+                <span>{item.label}</span>
+                {item.href === '/' && <span className="ml-auto status-dot bg-[hsl(var(--accent))]" />}
+                {item.href === '/cafeteria' && <span className="ml-auto rounded-full bg-sidebar-primary/15 px-1.5 py-0.5 text-[9px] text-sidebar-primary">open</span>}
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="mt-auto rounded-xl border border-sidebar-border bg-sidebar-accent/50 p-3.5">
+          <div className="flex items-center gap-2 text-xs font-bold text-sidebar-foreground"><span className="status-dot bg-emerald-400" /> System live</div>
+          <p className="mt-2 text-[11px] leading-relaxed text-sidebar-foreground/45">Synced with the floor. Last check just now.</p>
+        </div>
+        <div className="mt-4 flex items-center gap-2 border-t border-sidebar-border px-2 pt-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sidebar-primary text-[11px] font-extrabold text-sidebar-primary-foreground">AM</div>
+          <div><div className="text-xs font-bold text-sidebar-foreground">Alex Morgan</div><div className="text-[10px] text-sidebar-foreground/40">Floor manager</div></div>
+          <MoreHorizontal className="ml-auto text-sidebar-foreground/40" size={17} />
+        </div>
+      </aside>
+      {mobileOpen && <button aria-label="Close menu" data-testid="button-close-menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-30 bg-[hsl(var(--primary)/0.35)] md:hidden" />}
+      <main className="min-w-0 flex-1">
+        <header className="flex h-[72px] items-center justify-between border-b border-border bg-card/75 px-5 backdrop-blur md:px-8">
+          <div className="flex items-center gap-3">
+            <button aria-label="Open menu" data-testid="button-open-menu" onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted md:hidden"><Menu size={20} /></button>
+            <div className="hidden text-xs font-semibold text-muted-foreground sm:block">{fullDateLabel()}</div>
+            <div className="hidden h-4 w-px bg-border sm:block" />
+            <div className="flex items-center gap-2 text-xs font-semibold text-primary"><span className="status-dot bg-emerald-500" /> Live operations</div>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <button aria-label="Notifications" data-testid="button-notifications" className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted"><Bell size={18} /><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[hsl(var(--accent))]" /></button>
+            <div className="hidden h-6 w-px bg-border sm:block" />
+            <div className="mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">shift 14:00—22:00</div>
+          </div>
+        </header>
+        <div className="paper-grid min-h-[calc(100dvh-72px)] px-4 py-6 md:px-8 md:py-8">{children}</div>
+      </main>
+    </div>
+  );
+}
+
+function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) {
+  return <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+    <div><div className="mono mb-2 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">{eyebrow}</div><h1 className="text-[29px] font-extrabold tracking-[-0.045em] text-foreground md:text-[34px]">{title}</h1>{description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{description}</p>}</div>
+    {action}
+  </div>;
+}
+
+function Metric({ label, value, detail, tone = 'default', icon: Icon }: { label: string; value: string; detail: string; tone?: 'default' | 'accent' | 'warm'; icon: LucideIcon }) {
+  return <div className={`rounded-xl border p-4 ${tone === 'accent' ? 'border-primary/20 bg-primary text-primary-foreground' : tone === 'warm' ? 'border-accent/30 bg-accent/15' : 'border-border bg-card'}`}>
+    <div className="flex items-start justify-between"><span className={`text-[11px] font-bold uppercase tracking-[0.12em] ${tone === 'accent' ? 'text-primary-foreground/65' : 'text-muted-foreground'}`}>{label}</span><Icon size={17} className={tone === 'accent' ? 'text-accent' : 'text-muted-foreground'} /></div>
+    <div className={`tabular mt-4 text-[27px] font-extrabold tracking-[-0.04em] ${tone === 'accent' ? 'text-primary-foreground' : 'text-foreground'}`}>{value}</div>
+    <div className={`mt-1 flex items-center gap-1 text-[11px] font-semibold ${tone === 'accent' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}><ArrowUpRight size={13} /> {detail}</div>
+  </div>;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = { active: 'bg-emerald-500/10 text-emerald-700', available: 'bg-slate-500/10 text-slate-600', overdue: 'bg-red-500/10 text-red-700', open: 'bg-accent/20 text-amber-800', paid: 'bg-emerald-500/10 text-emerald-700', completed: 'bg-slate-500/10 text-slate-600', unpaid: 'bg-accent/20 text-amber-800' };
+  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold capitalize ${styles[status] ?? styles.available}`}><span className="status-dot bg-current" />{status}</span>;
+}
+
+function ResourceTile({ resource, onStart }: { resource: any; onStart: (id: number) => void }) {
+  const isPlaystation = resource.kind === 'playstation';
+  const isActive = resource.status !== 'available';
+  return <div data-testid={`card-resource-${resource.id}`} className={`group relative overflow-hidden rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${resource.status === 'overdue' ? 'border-red-200 bg-red-50/60' : 'border-border bg-card'}`}>
+    <div className="flex items-start justify-between"><div className={`flex h-9 w-9 items-center justify-center rounded-lg ${isPlaystation ? 'bg-violet-500/10 text-violet-700' : 'bg-primary/10 text-primary'}`}>{isPlaystation ? <Gamepad2 size={19} /> : <Table2 size={19} />}</div><StatusBadge status={resource.status} /></div>
+    <div className="mt-4 flex items-end justify-between"><div><div className="text-sm font-extrabold">{resource.name}</div><div className="mt-1 text-[11px] capitalize text-muted-foreground">{resource.kind} · {money(resource.hourlyRate)}/hr</div></div>{isActive && <div className={`mono tabular text-right text-sm font-medium ${resource.status === 'overdue' ? 'text-red-700' : 'text-primary'}`}>{resource.remainingSeconds != null ? secondsLabel(resource.remainingSeconds) : 'OPEN'}</div>}</div>
+    {isActive ? <div className="mt-4 border-t border-border pt-3 text-[11px] text-muted-foreground"><div className="flex justify-between"><span>{resource.status === 'overdue' ? 'Time exceeded' : 'Session in progress'}</span><span className="font-bold text-foreground">#{resource.activeSessionId}</span></div><button data-testid={`button-manage-resource-${resource.id}`} onClick={() => onStart(resource.id)} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-border py-1.5 text-[11px] font-bold hover:bg-muted"><Square size={11} fill="currentColor" /> View session ledger</button></div> : <button data-testid={`button-start-resource-${resource.id}`} onClick={() => onStart(resource.id)} className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary py-2 text-[11px] font-bold text-primary-foreground hover:opacity-90"><Plus size={13} /> Start session</button>}
+  </div>;
+}
+
+function SessionDialog({ resources, open, onClose }: { resources: any[]; open: boolean; onClose: () => void }) {
+  const create = useCreateSession();
+  const client = useQueryClient();
+  const [resourceId, setResourceId] = useState(String(resources.find((r) => r.status === 'available')?.id ?? resources[0]?.id ?? ''));
+  const [mode, setMode] = useState('open');
+  const [duration, setDuration] = useState('60');
+  if (!open) return null;
+  const submit = () => create.mutate({ data: { resourceId: Number(resourceId), mode: mode as 'open' | 'limited', durationMinutes: mode === 'limited' ? Number(duration) : null } }, { onSuccess: () => { client.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); client.invalidateQueries({ queryKey: getListResourcesQueryKey() }); client.invalidateQueries({ queryKey: getListSessionsQueryKey() }); onClose(); } });
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/35 p-4"><div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl fade-up">
+    <div className="flex items-start justify-between"><div><div className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">New activity</div><h2 className="mt-1 text-xl font-extrabold tracking-tight">Start a session</h2></div><button aria-label="Close dialog" data-testid="button-close-session-dialog" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button></div>
+    <div className="mt-6 space-y-4"><label className="block text-xs font-bold">Resource<select data-testid="select-session-resource" value={resourceId} onChange={(e) => setResourceId(e.target.value)} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm">{resources.filter((r) => r.status === 'available').map((r) => <option key={r.id} value={r.id}>{r.name} · {money(r.hourlyRate)}/hr</option>)}</select></label>
+      <div><div className="mb-1.5 text-xs font-bold">Session mode</div><div className="grid grid-cols-2 gap-2">{[['open', 'Open play', 'No end time'], ['limited', 'Limited', 'Set a duration']].map(([value, label, hint]) => <button type="button" key={value} data-testid={`button-mode-${value}`} onClick={() => setMode(value)} className={`rounded-lg border p-3 text-left ${mode === value ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'}`}><div className="text-xs font-extrabold">{label}</div><div className="mt-1 text-[10px] text-muted-foreground">{hint}</div></button>)}</div></div>
+      {mode === 'limited' && <label className="block text-xs font-bold">Duration (minutes)<input data-testid="input-session-duration" value={duration} onChange={(e) => setDuration(e.target.value)} type="number" min="1" className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /></label>}
+    </div>
+    <button disabled={create.isPending || !resourceId} data-testid="button-confirm-start-session" onClick={submit} className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{create.isPending ? 'Starting…' : 'Start session'}<ChevronRight size={16} /></button>
+  </div></div>;
+}
+
+function Dashboard() {
+  const { data, isLoading, isError, refetch } = useGetDashboard({ query: { queryKey: getGetDashboardQueryKey(), refetchInterval: 30000 } });
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [, setLocation] = useLocation();
+  const resources = data?.resources ?? [];
+  if (isLoading) return <LoadingPage />;
+  if (isError || !data) return <ErrorPage onRetry={refetch} />;
+  return <><PageHeading eyebrow={fullDateLabel()} title="Good evening, Alex." description="The floor is live. Here is what needs your attention right now." action={<button data-testid="button-start-session" onClick={() => setDialogOpen(true)} className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm hover:opacity-90"><Plus size={16} /> Start session</button>} />
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Metric label="Today's revenue" value={money(data.revenue)} detail="12.4% vs last Thursday" tone="accent" icon={CircleDollarSign} /><Metric label="Today's profit" value={money(data.profit)} detail="18.2% margin" tone="warm" icon={ArrowUpRight} /><Metric label="Active sessions" value={String(data.activeSessions).padStart(2, '0')} detail={`${resources.filter((r) => r.status === 'overdue').length} needs attention`} icon={Clock3} /><Metric label="Open cafeteria" value={String(data.openOrders).padStart(2, '0')} detail="Orders waiting to close" icon={ReceiptText} />
+    </div>
+       <section className="mt-7"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-base font-extrabold tracking-tight">Live floor</h2><p className="mt-0.5 text-xs text-muted-foreground">Every resource, at a glance</p></div><Link href="/sessions" data-testid="link-view-sessions" className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">View sessions <ChevronRight size={14} /></Link></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{resources.map((r) => <ResourceTile key={r.id} resource={r} onStart={() => r.status === 'available' ? setDialogOpen(true) : setLocation('/sessions')} />)}</div></section>
+    <div className="mt-7 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <PaymentMix data={data} />
+      <ActivityPanel activities={data.recentActivity} />
+    </div>
+    <SessionDialog resources={resources} open={dialogOpen} onClose={() => setDialogOpen(false)} />
+  </>;
+}
+
+function PaymentMix({ data }: { data: any }) {
+  const total = (data.paymentMix.cash ?? 0) + (data.paymentMix.cliq ?? 0);
+  const cashPercent = total ? Math.round((data.paymentMix.cash / total) * 100) : 0;
+  return <div className="rounded-xl border border-border bg-card p-5"><div className="flex items-start justify-between"><div><h2 className="text-sm font-extrabold">Payment mix</h2><p className="mt-1 text-xs text-muted-foreground">Collected today across all revenue</p></div><WalletCards size={18} className="text-muted-foreground" /></div><div className="mt-6 flex items-center gap-7"><div className="relative h-28 w-28 shrink-0 rounded-full" style={{ background: `conic-gradient(hsl(var(--primary)) ${cashPercent}%, hsl(var(--accent)) 0)` }}><div className="absolute inset-[9px] flex flex-col items-center justify-center rounded-full bg-card"><span className="tabular text-2xl font-extrabold">{cashPercent}%</span><span className="text-[9px] uppercase text-muted-foreground">cash</span></div></div><div className="flex-1 space-y-4"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-semibold"><span className="status-dot bg-primary" /> Cash</span><span className="tabular text-xs font-extrabold">{money(data.paymentMix.cash)}</span></div><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-semibold"><span className="status-dot bg-accent" /> CliQ</span><span className="tabular text-xs font-extrabold">{money(data.paymentMix.cliq)}</span></div><div className="border-t border-border pt-2 text-[10px] text-muted-foreground">Reconciliation looks balanced <Check size={12} className="ml-1 inline text-emerald-600" /></div></div></div></div>;
+}
+
+function ActivityPanel({ activities }: { activities: any[] }) {
+  return <div className="rounded-xl border border-border bg-card p-5"><div className="flex items-start justify-between"><div><h2 className="text-sm font-extrabold">Recent activity</h2><p className="mt-1 text-xs text-muted-foreground">Latest transactions and changes</p></div><Activity size={18} className="text-muted-foreground" /></div><div className="mt-4 space-y-1">{(activities ?? []).slice(0, 5).map((item) => <div key={item.id} data-testid={`activity-${item.id}`} className="flex items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-muted"><div className={`flex h-7 w-7 items-center justify-center rounded-md ${item.type === 'session' ? 'bg-primary/10 text-primary' : 'bg-accent/20 text-amber-800'}`}>{item.type === 'session' ? <Table2 size={14} /> : <Utensils size={14} />}</div><div className="min-w-0 flex-1"><div className="truncate text-xs font-bold">{item.label}</div><div className="text-[10px] text-muted-foreground">{timeLabel(item.createdAt)} · {item.paymentMethod ?? 'open'}</div></div><div className="tabular text-xs font-extrabold">{money(item.amount)}</div></div>)}</div></div>;
+}
+
+function SessionsPage() {
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const { data: resources = [] } = useListResources({ query: { queryKey: getListResourcesQueryKey() } });
+  const { data: sessions = [], isLoading, isError, refetch } = useListSessions(filter === 'all' ? undefined : { status: filter }, { query: { queryKey: getListSessionsQueryKey(filter === 'all' ? undefined : { status: filter }), refetchInterval: 30000 } });
+  const update = useUpdateSession();
+  const client = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+   const stop = (id: number, paymentMethod: 'cash' | 'cliq') => update.mutate({ id, data: { action: 'stop', paymentMethod } }, { onSuccess: () => { client.invalidateQueries({ queryKey: getListSessionsQueryKey() }); client.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); client.invalidateQueries({ queryKey: getListResourcesQueryKey() }); setSettlingId(null); } });
+   const [settlingId, setSettlingId] = useState<number | null>(null);
+  return <><PageHeading eyebrow="Operations / session ledger" title="Sessions" description="Start, monitor, and close every playing session." action={<button data-testid="button-new-session" onClick={() => setDialogOpen(true)} className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground"><Plus size={16} /> New session</button>} />
+    <div className="mb-4 flex flex-wrap items-center gap-2">{(['all', 'active', 'completed'] as const).map((item) => <button key={item} data-testid={`button-filter-${item}`} onClick={() => setFilter(item)} className={`rounded-full px-3.5 py-1.5 text-xs font-bold capitalize ${filter === item ? 'bg-primary text-primary-foreground' : 'border border-border bg-card text-muted-foreground hover:text-foreground'}`}>{item}</button>)}<span className="ml-auto text-xs text-muted-foreground">{sessions.length} records</span></div>
+     <div className="overflow-hidden rounded-xl border border-border bg-card">{isLoading ? <TableSkeleton /> : isError ? <InlineError onRetry={refetch} /> : sessions.length === 0 ? <EmptyState icon={TimerReset} title="No sessions in this view" text="Sessions will appear here as soon as play starts." action={() => setDialogOpen(true)} /> : <div className="mobile-scroll scrollbar-thin overflow-x-auto"><table className="w-full min-w-[760px] text-left"><thead className="border-b border-border bg-muted/50"><tr className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground"><th className="px-5 py-3.5">Resource</th><th className="px-4 py-3.5">Started</th><th className="px-4 py-3.5">Mode</th><th className="px-4 py-3.5">Duration</th><th className="px-4 py-3.5">Total</th><th className="px-4 py-3.5">Status</th><th className="px-5 py-3.5 text-right">Action</th></tr></thead><tbody className="divide-y divide-border">{sessions.map((session: any) => <tr key={session.id} data-testid={`row-session-${session.id}`} className="text-sm hover:bg-muted/35"><td className="px-5 py-3.5"><div className="font-extrabold">{session.resourceName}</div><div className="mt-0.5 text-[10px] capitalize text-muted-foreground">{session.resourceKind} · #{session.id}</div></td><td className="px-4 py-3.5 text-xs text-muted-foreground">{dateLabel(session.startedAt)} · {timeLabel(session.startedAt)}</td><td className="px-4 py-3.5"><span className="rounded bg-muted px-2 py-1 text-[10px] font-bold capitalize">{session.mode}</span></td><td className="px-4 py-3.5 mono tabular text-xs">{session.status === 'active' ? secondsLabel(session.elapsedSeconds) : `${session.durationMinutes ?? 0} min`}</td><td className="px-4 py-3.5 tabular text-xs font-extrabold">{money(session.total)}</td><td className="px-4 py-3.5"><StatusBadge status={session.status} /></td><td className="px-5 py-3.5 text-right">{session.status === 'active' || session.status === 'overdue' ? settlingId === session.id ? <div className="inline-flex items-center gap-1.5"><span className="mr-1 text-[10px] text-muted-foreground">Pay</span><button disabled={update.isPending} data-testid={`button-pay-session-cash-${session.id}`} onClick={() => stop(session.id, 'cash')} className="rounded-md border border-border px-2 py-1.5 text-[10px] font-bold hover:border-primary">Cash</button><button disabled={update.isPending} data-testid={`button-pay-session-cliq-${session.id}`} onClick={() => stop(session.id, 'cliq')} className="rounded-md bg-primary px-2 py-1.5 text-[10px] font-bold text-primary-foreground hover:opacity-90">CliQ</button></div> : <button disabled={update.isPending} data-testid={`button-stop-session-${session.id}`} onClick={() => setSettlingId(session.id)} className="rounded-md border border-border px-2.5 py-1.5 text-[11px] font-bold hover:border-primary hover:text-primary">Close session</button> : <span className="text-[11px] text-muted-foreground">{session.paymentStatus ?? 'settled'}</span>}</td></tr>)}</tbody></table></div>}</div>
+    <SessionDialog resources={resources as any[]} open={dialogOpen} onClose={() => setDialogOpen(false)} />
+  </>;
+}
+
+function CafeteriaPage() {
+  const client = useQueryClient();
+  const { data: products = [], isLoading: productsLoading } = useListProducts({ query: { queryKey: getListProductsQueryKey() } });
+  const { data: orders = [], isLoading: ordersLoading } = useListOrders(undefined, { query: { queryKey: getListOrdersQueryKey(), refetchInterval: 30000 } });
+  const createProduct = useCreateProduct();
+  const createOrder = useCreateOrder();
+  const payOrder = usePayOrder();
+  const [showProduct, setShowProduct] = useState(false);
+  const [productForm, setProductForm] = useState({ name: '', category: 'Drinks', price: '', cost: '' });
+  const [cart, setCart] = useState<Record<number, number>>({});
+  const activeProducts = products.filter((p: any) => p.isActive);
+  const openOrders = orders.filter((o: any) => o.status === 'open');
+  const cartTotal = activeProducts.reduce((sum: number, p: any) => sum + (cart[p.id] ?? 0) * p.price, 0);
+  const addToCart = (id: number) => setCart((old) => ({ ...old, [id]: (old[id] ?? 0) + 1 }));
+  const submitProduct = () => createProduct.mutate({ data: { name: productForm.name, category: productForm.category, price: Number(productForm.price), cost: Number(productForm.cost) } }, { onSuccess: () => { client.invalidateQueries({ queryKey: getListProductsQueryKey() }); setProductForm({ name: '', category: 'Drinks', price: '', cost: '' }); setShowProduct(false); } });
+  const submitOrder = () => { const items = Object.entries(cart).filter(([, quantity]) => quantity > 0).map(([productId, quantity]) => ({ productId: Number(productId), quantity })); if (items.length) createOrder.mutate({ data: { items } }, { onSuccess: () => { client.invalidateQueries({ queryKey: getListOrdersQueryKey() }); setCart({}); } }); };
+  const settle = (id: number, paymentMethod: 'cash' | 'cliq') => payOrder.mutate({ id, data: { paymentMethod } }, { onSuccess: () => { client.invalidateQueries({ queryKey: getListOrdersQueryKey() }); client.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); } });
+  return <><PageHeading eyebrow="Cafeteria / till" title="Cafeteria" description="Build orders quickly, then close the till with confidence." action={<button data-testid="button-add-product" onClick={() => setShowProduct(true)} className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-bold hover:bg-muted"><Plus size={16} /> Add product</button>} />
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.35fr_0.65fr]">
+      <div><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-extrabold">Quick order</h2><span className="text-xs text-muted-foreground">{activeProducts.length} active items</span></div>{productsLoading ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-3"><div className="h-28 animate-pulse rounded-xl bg-muted" /><div className="h-28 animate-pulse rounded-xl bg-muted" /><div className="h-28 animate-pulse rounded-xl bg-muted" /></div> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{activeProducts.map((product: any) => <button key={product.id} data-testid={`button-add-product-${product.id}`} onClick={() => addToCart(product.id)} className="group rounded-xl border border-border bg-card p-4 text-left hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"><div className="flex items-start justify-between"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/20 text-amber-800"><Package size={16} /></div>{cart[product.id] ? <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">{cart[product.id]}</span> : <Plus size={15} className="text-muted-foreground opacity-0 group-hover:opacity-100" />}</div><div className="mt-4 text-xs font-extrabold">{product.name}</div><div className="mt-1 text-[11px] text-muted-foreground">{product.category} · <span className="font-bold text-foreground">{money(product.price)}</span></div></button>)}</div>}</div>
+      <div className="rounded-xl border border-primary/20 bg-primary p-5 text-primary-foreground"><div className="flex items-center justify-between"><div><h2 className="text-sm font-extrabold">Current order</h2><p className="mt-1 text-[11px] text-primary-foreground/60">{Object.values(cart).reduce((a, b) => a + b, 0)} items selected</p></div><ReceiptText size={18} className="text-accent" /></div><div className="mt-6 min-h-[112px] space-y-2">{activeProducts.filter((p: any) => cart[p.id]).map((p: any) => <div key={p.id} className="flex items-center justify-between text-xs"><span>{cart[p.id]} × {p.name}</span><span className="tabular font-bold">{money(cart[p.id] * p.price)}</span></div>)}{cartTotal === 0 && <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-primary-foreground/20 text-xs text-primary-foreground/45">Tap a product to begin</div>}</div><div className="mt-4 flex items-end justify-between border-t border-primary-foreground/15 pt-3"><span className="text-xs text-primary-foreground/60">Total</span><span className="tabular text-2xl font-extrabold">{money(cartTotal)}</span></div><button disabled={cartTotal === 0 || createOrder.isPending} data-testid="button-save-order" onClick={submitOrder} className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-xs font-extrabold text-primary hover:opacity-90 disabled:opacity-40">{createOrder.isPending ? 'Saving…' : 'Save open order'}<ChevronRight size={15} /></button></div>
+    </div>
+    <section className="mt-8"><div className="mb-3 flex items-end justify-between"><div><h2 className="text-sm font-extrabold">Open orders</h2><p className="mt-1 text-xs text-muted-foreground">Unpaid tickets still on the floor</p></div><span className="rounded-full bg-accent/20 px-2.5 py-1 text-[10px] font-bold text-amber-800">{openOrders.length} open</span></div><div className="overflow-hidden rounded-xl border border-border bg-card">{ordersLoading ? <TableSkeleton /> : openOrders.length === 0 ? <EmptyState icon={ReceiptText} title="The counter is clear" text="New open orders will appear here." /> : <div className="divide-y divide-border">{openOrders.map((order: any) => <div key={order.id} data-testid={`row-order-${order.id}`} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center"><div className="flex min-w-0 flex-1 items-center gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/20 text-amber-800"><ReceiptText size={15} /></div><div className="min-w-0"><div className="text-xs font-extrabold">Order #{order.id}</div><div className="truncate text-[11px] text-muted-foreground">{order.items.map((i: any) => `${i.quantity} × ${i.productName}`).join(' · ')}</div></div></div><div className="flex items-center justify-between gap-5 sm:justify-end"><div className="text-right"><div className="tabular text-sm font-extrabold">{money(order.total)}</div><div className="text-[10px] text-muted-foreground">{timeLabel(order.createdAt)}</div></div><div className="flex gap-1.5"><button disabled={payOrder.isPending} data-testid={`button-pay-cash-${order.id}`} onClick={() => settle(order.id, 'cash')} className="rounded-md border border-border px-2.5 py-1.5 text-[10px] font-bold hover:border-primary">Cash</button><button disabled={payOrder.isPending} data-testid={`button-pay-cliq-${order.id}`} onClick={() => settle(order.id, 'cliq')} className="rounded-md bg-primary px-2.5 py-1.5 text-[10px] font-bold text-primary-foreground hover:opacity-90">CliQ</button></div></div></div>)}</div>}</div></section>
+    {showProduct && <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/35 p-4"><div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl fade-up"><div className="flex items-start justify-between"><div><div className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Catalogue</div><h2 className="mt-1 text-xl font-extrabold">Add product</h2></div><button aria-label="Close product dialog" data-testid="button-close-product-dialog" onClick={() => setShowProduct(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button></div><div className="mt-5 grid grid-cols-2 gap-3"><label className="col-span-2 text-xs font-bold">Product name<input data-testid="input-product-name" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /></label><label className="text-xs font-bold">Category<input data-testid="input-product-category" value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /></label><label className="text-xs font-bold">Price<input data-testid="input-product-price" type="number" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /></label><label className="text-xs font-bold">Cost<input data-testid="input-product-cost" type="number" value={productForm.cost} onChange={(e) => setProductForm({ ...productForm, cost: e.target.value })} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" /></label></div><button disabled={createProduct.isPending || !productForm.name} data-testid="button-confirm-product" onClick={submitProduct} className="mt-6 w-full rounded-lg bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{createProduct.isPending ? 'Adding…' : 'Add to catalogue'}</button></div></div>}
+  </>;
+}
+
+function ReportsPage() {
+  const [from, setFrom] = useState(today());
+  const [to, setTo] = useState(today());
+  const params = useMemo(() => ({ from, to }), [from, to]);
+  const { data, isLoading, isError, refetch } = useGetProfitReport(params, { query: { queryKey: getGetProfitReportQueryKey(params) } });
+  return <><PageHeading eyebrow="Reporting / reconciliation" title="Reports" description="A clear read on what the club earned, spent, and kept." action={<div className="flex items-center gap-2 rounded-lg border border-border bg-card p-1.5"><CalendarDays size={15} className="ml-2 text-muted-foreground" /><input aria-label="Report from date" data-testid="input-report-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-transparent px-1 text-xs font-bold outline-none" /><span className="text-xs text-muted-foreground">to</span><input aria-label="Report to date" data-testid="input-report-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-transparent px-1 text-xs font-bold outline-none" /></div>} />
+    {isLoading ? <LoadingPage /> : isError || !data ? <ErrorPage onRetry={refetch} /> : <><div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric label="Revenue" value={money(data.revenue)} detail={`${dateLabel(data.from)} — ${dateLabel(data.to)}`} tone="accent" icon={CircleDollarSign} /><Metric label="Operating cost" value={money(data.cost)} detail="Cafeteria product cost" icon={ArrowDownRight} /><Metric label="Net profit" value={money(data.profit)} detail={`${data.revenue ? ((data.profit / data.revenue) * 100).toFixed(1) : '0.0'}% margin`} tone="warm" icon={ArrowUpRight} /></div><div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.65fr]"><div className="rounded-xl border border-border bg-card p-5"><div className="flex items-start justify-between"><div><h2 className="text-sm font-extrabold">Revenue by day</h2><p className="mt-1 text-xs text-muted-foreground">Gross revenue and profit across the selected range</p></div><BarChart3 size={18} className="text-muted-foreground" /></div><div className="mt-6 space-y-4">{data.byDay.map((day: any) => { const max = Math.max(...data.byDay.map((d: any) => d.revenue), 1); return <div key={day.date} data-testid={`report-day-${day.date}`} className="grid grid-cols-[76px_1fr_72px] items-center gap-3 text-xs"><span className="font-semibold text-muted-foreground">{dateLabel(day.date)}</span><div className="h-7 rounded bg-muted"><div className="flex h-full items-center justify-end rounded bg-primary px-2 text-[10px] font-bold text-primary-foreground" style={{ width: `${Math.max(8, (day.revenue / max) * 100)}%` }}>{money(day.revenue)}</div></div><span className="tabular text-right font-bold text-emerald-700">{money(day.profit)}</span></div>; })}</div></div><div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-extrabold">Revenue split</h2><p className="mt-1 text-xs text-muted-foreground">By operating area</p><div className="mt-6 space-y-5"><SplitLine label="Sessions" value={data.sessionRevenue} total={data.revenue} color="bg-primary" /><SplitLine label="Cafeteria" value={data.cafeteriaRevenue} total={data.revenue} color="bg-accent" /></div><div className="mt-7 border-t border-border pt-5"><h3 className="text-xs font-extrabold">Payment reconciliation</h3><div className="mt-3 space-y-3"><div className="flex justify-between text-xs"><span className="flex items-center gap-2 text-muted-foreground"><span className="status-dot bg-primary" /> Cash</span><span className="tabular font-extrabold">{money(data.byPaymentMethod.cash)}</span></div><div className="flex justify-between text-xs"><span className="flex items-center gap-2 text-muted-foreground"><span className="status-dot bg-accent" /> CliQ</span><span className="tabular font-extrabold">{money(data.byPaymentMethod.cliq)}</span></div></div></div></div></div></>}</>;
+}
+
+function SplitLine({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  return <div><div className="mb-2 flex justify-between text-xs"><span className="font-semibold text-muted-foreground">{label}</span><span className="tabular font-extrabold">{money(value)}</span></div><div className="h-2 rounded-full bg-muted"><div className={`h-full rounded-full ${color}`} style={{ width: `${total ? (value / total) * 100 : 0}%` }} /></div></div>;
+}
+
+function SettingsPage() {
+  const { data: resources = [], isLoading: resourcesLoading } = useListResources({ query: { queryKey: getListResourcesQueryKey() } });
+  const { data: products = [], isLoading: productsLoading } = useListProducts({ query: { queryKey: getListProductsQueryKey() } });
+  const client = useQueryClient();
+  const invalidateRates = () => {
+    client.invalidateQueries({ queryKey: getListResourcesQueryKey() });
+    client.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+  };
+  return <><PageHeading eyebrow="Configuration / club defaults" title="Settings" description="The source of truth for rates and the products your floor team can sell." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.1fr_0.9fr]"><div className="rounded-xl border border-border bg-card"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h2 className="text-sm font-extrabold">Resource rates</h2><p className="mt-1 text-xs text-muted-foreground">Hourly pricing applied to new sessions</p></div><SlidersHorizontal size={18} className="text-muted-foreground" /></div>{resourcesLoading ? <TableSkeleton /> : <div className="divide-y divide-border">{resources.map((resource: any) => <ResourceRateRow key={resource.id} resource={resource} onSaved={invalidateRates} />)}</div>}</div><div className="rounded-xl border border-border bg-card"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h2 className="text-sm font-extrabold">Cafeteria products</h2><p className="mt-1 text-xs text-muted-foreground">Current catalogue and margin signals</p></div><Package size={18} className="text-muted-foreground" /></div>{productsLoading ? <TableSkeleton /> : <div className="divide-y divide-border">{products.map((product: any) => <div key={product.id} className="flex items-center justify-between px-5 py-4"><div><div className="text-xs font-extrabold">{product.name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{product.category} · {product.isActive ? 'Active' : 'Paused'}</div></div><div className="text-right"><div className="tabular text-xs font-extrabold">{money(product.price)}</div><div className="text-[10px] text-emerald-700">{product.price ? `${(((product.price - product.cost) / product.price) * 100).toFixed(0)}% margin` : '—'}</div></div></div>)}</div>}</div></div><div className="mt-5 flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/10 p-4"><Settings size={17} className="mt-0.5 text-amber-800" /><div><div className="text-xs font-extrabold">Rate editing is protected</div><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Changes apply to new sessions. Keep the rate card aligned with the prices shown on the floor.</p></div></div></>;
+}
+
+function ResourceRateRow({ resource, onSaved }: { resource: any; onSaved: () => void }) {
+  const update = useUpdateResource();
+  const [rate, setRate] = useState(String(resource.hourlyRate));
+  const dirty = Number(rate) !== resource.hourlyRate;
+  const save = () => {
+    const value = Number(rate);
+    if (!Number.isFinite(value) || value < 0) return;
+    update.mutate({ id: resource.id, data: { hourlyRate: value } }, { onSuccess: onSaved });
+  };
+  return <div className="flex items-center justify-between px-5 py-4"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">{resource.kind === 'playstation' ? <Gamepad2 size={15} /> : <Table2 size={15} />}</div><div><div className="text-xs font-extrabold">{resource.name}</div><div className="mt-0.5 text-[10px] capitalize text-muted-foreground">{resource.kind}</div></div></div><div className="flex items-center gap-2"><span className="mono text-xs text-muted-foreground">/ hour</span><div className="flex items-center rounded-md border border-input bg-background px-2.5 py-1.5"><span className="text-xs text-muted-foreground">JOD</span><input aria-label={`Rate for ${resource.name}`} data-testid={`input-rate-${resource.id}`} value={rate} onChange={(event) => setRate(event.target.value)} type="number" min="0" step="0.25" className="w-16 bg-transparent pl-1 text-right text-xs font-bold outline-none" /></div><button disabled={!dirty || update.isPending} aria-label={`Save ${resource.name} rate`} data-testid={`button-save-rate-${resource.id}`} onClick={save} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-35">{update.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Check size={15} />}</button></div></div>;
+}
+
+function LoadingPage() { return <div className="space-y-6"><div className="h-8 w-56 animate-pulse rounded bg-muted" /><div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><div className="h-32 animate-pulse rounded-xl bg-muted" /><div className="h-32 animate-pulse rounded-xl bg-muted" /><div className="h-32 animate-pulse rounded-xl bg-muted" /><div className="h-32 animate-pulse rounded-xl bg-muted" /></div><div className="h-72 animate-pulse rounded-xl bg-muted" /></div>; }
+function TableSkeleton() { return <div className="space-y-3 p-5">{[1, 2, 3, 4].map((i) => <div key={i} className="h-11 animate-pulse rounded-lg bg-muted" />)}</div>; }
+function ErrorPage({ onRetry }: { onRetry: () => void }) { return <div className="flex min-h-[50vh] items-center justify-center"><div className="max-w-sm text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10 text-red-700"><RefreshCw size={21} /></div><h2 className="mt-4 text-lg font-extrabold">Could not load the floor</h2><p className="mt-1 text-sm text-muted-foreground">The control room is waiting for a fresh signal.</p><button data-testid="button-retry" onClick={onRetry} className="mt-5 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground">Try again</button></div></div>; }
+function InlineError({ onRetry }: { onRetry: () => void }) { return <div className="p-10 text-center"><p className="text-sm font-bold">Could not load this list.</p><button data-testid="button-retry-list" onClick={onRetry} className="mt-3 text-xs font-bold text-primary underline">Try again</button></div>; }
+function EmptyState({ icon: Icon, title, text, action }: { icon: LucideIcon; title: string; text: string; action?: () => void }) { return <div className="flex flex-col items-center justify-center px-5 py-16 text-center"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted text-muted-foreground"><Icon size={20} /></div><h3 className="mt-4 text-sm font-extrabold">{title}</h3><p className="mt-1 text-xs text-muted-foreground">{text}</p>{action && <button data-testid="button-empty-action" onClick={action} className="mt-4 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground">Start one</button>}</div>; }
+
+function Router() {
+  const [location] = useLocation();
+  return <ErrorBoundary resetKey={location}><Shell><Switch><Route path="/" component={Dashboard} /><Route path="/sessions" component={SessionsPage} /><Route path="/cafeteria" component={CafeteriaPage} /><Route path="/reports" component={ReportsPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></Shell></ErrorBoundary>;
+}
+
+function App() {
+  return <QueryClientProvider client={queryClient}><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></QueryClientProvider>;
+}
+
+export default App;
