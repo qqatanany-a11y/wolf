@@ -16,7 +16,6 @@ export interface Order {
   name?: string;
   subtotal: number;
   total: number;
-  profit: number;
   /** @nullable */
   paymentMethod?: OrderPaymentMethod;
   /** @nullable */

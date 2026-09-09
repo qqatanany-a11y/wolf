@@ -25,19 +25,18 @@ class Command(BaseCommand):
                 defaults={"kind": kind, "hourly_rate": Decimal(rate)},
             )
         products = [
-            ("Mineral Water", "Drinks", "0.75", "0.25"),
-            ("Turkish Coffee", "Drinks", "1.50", "0.45"),
-            ("Fresh Juice", "Drinks", "2.25", "0.80"),
-            ("Chips", "Snacks", "1.00", "0.45"),
-            ("Mixed Nuts", "Snacks", "2.00", "0.95"),
+            ("Mineral Water", "Drinks", "0.75"),
+            ("Turkish Coffee", "Drinks", "1.50"),
+            ("Fresh Juice", "Drinks", "2.25"),
+            ("Chips", "Snacks", "1.00"),
+            ("Mixed Nuts", "Snacks", "2.00"),
         ]
-        for name, category, price, cost in products:
+        for name, category, price in products:
             Product.objects.get_or_create(
                 name=name,
                 defaults={
                     "category": category,
                     "price": Decimal(price),
-                    "cost": Decimal(cost),
                 },
             )
         self.stdout.write(self.style.SUCCESS("Club resources and cafeteria products are ready."))

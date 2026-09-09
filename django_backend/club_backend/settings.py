@@ -21,6 +21,8 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "club.middleware.ClubApiAuthenticationMiddleware",
 ]
 
 ROOT_URLCONF = "club_backend.urls"
@@ -61,3 +63,10 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Set these in the deployment environment. The development defaults exist only
+# so a newly cloned project remains usable locally.
+CLUB_INITIAL_PASSWORD = os.environ.get("CLUB_INITIAL_PASSWORD", "ChangeMe123!")
+CLUB_PASSWORD_RESET_CODE = os.environ.get(
+    "CLUB_PASSWORD_RESET_CODE", "wolf-recovery" if DEBUG else ""
+)

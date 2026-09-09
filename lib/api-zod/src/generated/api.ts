@@ -34,7 +34,6 @@ export const GetDashboardResponse = zod.object({
   "remainingSeconds": zod.number().int().nullish()
 })),
   "revenue": zod.number(),
-  "profit": zod.number(),
   "activeSessions": zod.number().int(),
   "openOrders": zod.number().int(),
   "paymentMix": zod.object({
@@ -115,10 +114,11 @@ export const ListSessionsResponseItem = zod.object({
   "resourceId": zod.number().int(),
   "resourceName": zod.string(),
   "resourceKind": zod.enum(['snooker', 'billiards', 'playstation']),
-  "status": zod.enum(['active', 'completed', 'overdue']),
+  "status": zod.enum(['active', 'paused', 'completed', 'overdue']),
   "mode": zod.enum(['open', 'limited']),
   "startedAt": zod.coerce.date(),
   "endedAt": zod.coerce.date().nullish(),
+  "pausedAt": zod.coerce.date().nullish(),
   "endsAt": zod.coerce.date().nullish(),
   "durationMinutes": zod.number().int().nullish(),
   "elapsedSeconds": zod.number().int().optional(),
@@ -141,7 +141,6 @@ export const ListSessionsResponseItem = zod.object({
   "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
-  "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
@@ -172,10 +171,11 @@ export const CreateSessionResponse = zod.object({
   "resourceId": zod.number().int(),
   "resourceName": zod.string(),
   "resourceKind": zod.enum(['snooker', 'billiards', 'playstation']),
-  "status": zod.enum(['active', 'completed', 'overdue']),
+  "status": zod.enum(['active', 'paused', 'completed', 'overdue']),
   "mode": zod.enum(['open', 'limited']),
   "startedAt": zod.coerce.date(),
   "endedAt": zod.coerce.date().nullish(),
+  "pausedAt": zod.coerce.date().nullish(),
   "endsAt": zod.coerce.date().nullish(),
   "durationMinutes": zod.number().int().nullish(),
   "elapsedSeconds": zod.number().int().optional(),
@@ -198,7 +198,6 @@ export const CreateSessionResponse = zod.object({
   "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
-  "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
@@ -219,7 +218,7 @@ export const UpdateSessionParams = zod.object({
 
 
 export const UpdateSessionBody = zod.object({
-  "action": zod.enum(['stop', 'extend']).optional(),
+  "action": zod.enum(['pause', 'resume', 'stop', 'extend']).optional(),
   "durationMinutes": zod.number().int().min(1).nullish(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
 })
@@ -232,10 +231,11 @@ export const UpdateSessionResponse = zod.object({
   "resourceId": zod.number().int(),
   "resourceName": zod.string(),
   "resourceKind": zod.enum(['snooker', 'billiards', 'playstation']),
-  "status": zod.enum(['active', 'completed', 'overdue']),
+  "status": zod.enum(['active', 'paused', 'completed', 'overdue']),
   "mode": zod.enum(['open', 'limited']),
   "startedAt": zod.coerce.date(),
   "endedAt": zod.coerce.date().nullish(),
+  "pausedAt": zod.coerce.date().nullish(),
   "endsAt": zod.coerce.date().nullish(),
   "durationMinutes": zod.number().int().nullish(),
   "elapsedSeconds": zod.number().int().optional(),
@@ -258,7 +258,6 @@ export const UpdateSessionResponse = zod.object({
   "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
-  "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
@@ -276,7 +275,6 @@ export const ListProductsResponseItem = zod.object({
   "name": zod.string(),
   "category": zod.string(),
   "price": zod.number(),
-  "cost": zod.number(),
   "isActive": zod.boolean()
 })
 export const ListProductsResponse = zod.array(ListProductsResponseItem)
@@ -289,15 +287,12 @@ export const ListProductsResponse = zod.array(ListProductsResponseItem)
 
 export const createProductBodyPriceMin = 0;
 
-export const createProductBodyCostMin = 0;
-
 
 
 export const CreateProductBody = zod.object({
   "name": zod.string().min(1),
   "category": zod.string().min(1),
-  "price": zod.number().min(createProductBodyPriceMin),
-  "cost": zod.number().min(createProductBodyCostMin)
+  "price": zod.number().min(createProductBodyPriceMin)
 })
 
 export const CreateProductResponse = zod.object({
@@ -305,7 +300,6 @@ export const CreateProductResponse = zod.object({
   "name": zod.string(),
   "category": zod.string(),
   "price": zod.number(),
-  "cost": zod.number(),
   "isActive": zod.boolean()
 })
 
@@ -336,7 +330,6 @@ export const ListOrdersResponseItem = zod.object({
   "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
-  "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
@@ -378,7 +371,6 @@ export const CreateOrderResponse = zod.object({
   "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
-  "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
@@ -412,7 +404,6 @@ export const PayOrderResponse = zod.object({
   "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
-  "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
@@ -420,7 +411,7 @@ export const PayOrderResponse = zod.object({
 
 
 /**
- * @summary Get revenue and profit report
+ * @summary Get revenue report
  */
 export const GetProfitReportQueryParams = zod.object({
   "from": zod.date(),
@@ -431,8 +422,6 @@ export const GetProfitReportResponse = zod.object({
   "from": zod.coerce.date(),
   "to": zod.coerce.date(),
   "revenue": zod.number(),
-  "cost": zod.number(),
-  "profit": zod.number(),
   "sessionRevenue": zod.number(),
   "cafeteriaRevenue": zod.number(),
   "byPaymentMethod": zod.object({
@@ -442,7 +431,6 @@ export const GetProfitReportResponse = zod.object({
   "byDay": zod.array(zod.object({
   "date": zod.coerce.date(),
   "revenue": zod.number(),
-  "profit": zod.number(),
   "cash": zod.number(),
   "cliq": zod.number()
 }))

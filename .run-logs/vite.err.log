@@ -43,3 +43,100 @@ Error: connect ECONNREFUSED 127.0.0.1:8000
 5:05:00 PM [vite] http proxy error: /api/sessions
 Error: connect ECONNREFUSED 127.0.0.1:8000
     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:22:49 PM [vite] (client) Pre-transform error: Failed to load url /@fs/C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.ts (resolved id: C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.ts) in C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/index.ts. Does the file exist?
+10:22:49 PM [vite] (client) Pre-transform error: Failed to load url /@fs/C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.schemas.ts (resolved id: C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.schemas.ts) in C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/index.ts. Does the file exist?
+10:28:51 PM [vite] http proxy error: /api/products/3
+Error: Parse Error: Expected HTTP/, RTSP/ or ICE/
+    at Socket.socketOnData (node:_http_client:615:22)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at TCP.onStreamRead (node:internal/stream_base_commons:189:23)
+10:29:10 PM [vite] http proxy error: /api/products/1
+Error: Parse Error: Expected HTTP/, RTSP/ or ICE/
+    at Socket.socketOnData (node:_http_client:615:22)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at TCP.onStreamRead (node:internal/stream_base_commons:189:23)
+10:30:25 PM [vite] http proxy error: /api/products/11
+Error: Parse Error: Expected HTTP/, RTSP/ or ICE/
+    at Socket.socketOnData (node:_http_client:615:22)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at TCP.onStreamRead (node:internal/stream_base_commons:189:23)
+10:31:05 PM [vite] http proxy error: /api/products
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:05 PM [vite] http proxy error: /api/sessions?status=active
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:05 PM [vite] http proxy error: /api/dashboard
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:06 PM [vite] http proxy error: /api/sessions
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:06 PM [vite] http proxy error: /api/products
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:06 PM [vite] http proxy error: /api/sessions?status=active
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:06 PM [vite] http proxy error: /api/dashboard
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:08 PM [vite] http proxy error: /api/products
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:08 PM [vite] http proxy error: /api/sessions?status=active
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:31:08 PM [vite] http proxy error: /api/dashboard
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:48:43 PM [vite] (client) Pre-transform error: Failed to load url /@fs/C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.ts (resolved id: C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.ts) in C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/index.ts. Does the file exist?
+10:48:43 PM [vite] (client) Pre-transform error: Failed to load url /@fs/C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.schemas.ts (resolved id: C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.schemas.ts) in C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/index.ts. Does the file exist?
+10:49:11 PM [vite] http proxy error: /api/sessions/26
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:12 PM [vite] http proxy error: /api/resources
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:12 PM [vite] http proxy error: /api/products
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:12 PM [vite] http proxy error: /api/sessions?status=active
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:12 PM [vite] http proxy error: /api/sessions/26
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:13 PM [vite] http proxy error: /api/sessions/26
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:13 PM [vite] http proxy error: /api/sessions/26
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:13 PM [vite] http proxy error: /api/sessions/26
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:13 PM [vite] http proxy error: /api/sessions/26
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:13 PM [vite] http proxy error: /api/resources
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:13 PM [vite] http proxy error: /api/products
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+10:49:13 PM [vite] http proxy error: /api/sessions?status=active
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+11:28:15 PM [vite] http proxy error: /api/auth/me
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)

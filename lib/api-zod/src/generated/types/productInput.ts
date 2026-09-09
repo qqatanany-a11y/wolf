@@ -13,6 +13,4 @@ export interface ProductInput {
   category: string;
   /** @minimum 0 */
   price: number;
-  /** @minimum 0 */
-  cost: number;
 }

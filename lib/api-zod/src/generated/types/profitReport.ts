@@ -12,8 +12,6 @@ export interface ProfitReport {
   from: Date;
   to: Date;
   revenue: number;
-  cost: number;
-  profit: number;
   sessionRevenue: number;
   cafeteriaRevenue: number;
   byPaymentMethod: ProfitReportByPaymentMethod;

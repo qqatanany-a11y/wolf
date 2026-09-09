@@ -4,6 +4,11 @@ from . import views
 
 urlpatterns = [
     path("healthz", views.healthz),
+    path("auth/login", views.auth_login),
+    path("auth/logout", views.auth_logout),
+    path("auth/me", views.auth_me),
+    path("auth/change-password", views.change_password),
+    path("auth/reset-password", views.reset_password),
     path("dashboard", views.dashboard),
     path("resources", views.resources),
     path("resources/<int:resource_id>", views.resource_detail),
@@ -16,4 +21,5 @@ urlpatterns = [
     path("orders/<int:order_id>/pay", views.pay_order),
     path("orders/<int:order_id>/items", views.order_items),
     path("reports/profit", views.profit_report),
+    path("reports/audit", views.audit_log),
 ]

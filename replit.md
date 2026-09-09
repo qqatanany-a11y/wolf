@@ -1,6 +1,6 @@
 # Club Operations
 
-Live management for billiards, snooker, PlayStation sessions, cafeteria orders, payments, and profit.
+Live management for billiards, snooker, PlayStation sessions, cafeteria orders, payments, and revenue.
 
 ## Run & Operate
 
@@ -30,13 +30,13 @@ Live management for billiards, snooker, PlayStation sessions, cafeteria orders, 
 ## Architecture decisions
 
 - Session totals are calculated server-side from elapsed time and the resource hourly rate.
-- Every order line stores the sale price and cost at checkout so historical profit does not change when a product price changes.
+- Every order line stores the sale price at checkout so historical revenue does not change when a product price changes.
 - Limited sessions become overdue without being auto-closed, so staff can decide whether to extend or stop and settle them.
 - Cash and CliQ are explicit payment methods on completed sales and reports aggregate only settled transactions.
 
 ## Product
 
-The app gives club staff a live view of all eight playing resources, starts open or limited sessions, alerts on overdue time, records cafeteria sales, takes cash or CliQ payments, and reports revenue, costs, and profit by day and payment method.
+The app gives club staff a live view of all eight playing resources, starts open or limited sessions, alerts on overdue time, records cafeteria sales, takes cash or CliQ payments, and reports revenue by day and payment method.
 
 ## User preferences
 

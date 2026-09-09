@@ -11,6 +11,7 @@ export type SessionStatus = typeof SessionStatus[keyof typeof SessionStatus];
 
 export const SessionStatus = {
   active: 'active',
+  paused: 'paused',
   completed: 'completed',
   overdue: 'overdue',
 } as const;

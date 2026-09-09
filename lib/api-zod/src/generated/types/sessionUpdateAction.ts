@@ -10,6 +10,8 @@ export type SessionUpdateAction = typeof SessionUpdateAction[keyof typeof Sessio
 
 
 export const SessionUpdateAction = {
+  pause: 'pause',
+  resume: 'resume',
   stop: 'stop',
   extend: 'extend',
 } as const;

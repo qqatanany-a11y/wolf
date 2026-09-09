@@ -3,6 +3,9 @@ from decimal import Decimal
 
 from django.test import TestCase
 from django.utils import timezone
+from django.test import override_settings
+
+from django.contrib.auth.models import User
 
 from .models import PlayingSession, Resource
 
@@ -37,3 +40,43 @@ class PlayingSessionBillingTests(TestCase):
                 session = self.session_for_duration(elapsed_seconds)
                 self.assertEqual(session.billed_seconds, billed_seconds)
                 self.assertEqual(session.total, total)
+
+
+@override_settings(CLUB_INITIAL_PASSWORD="InitialPass123!", CLUB_PASSWORD_RESET_CODE="recovery-code")
+class AuthenticationTests(TestCase):
+    def login(self, username="mazen", password="InitialPass123!"):
+        return self.client.post(
+            "/api/auth/login",
+            data={"username": username, "password": password},
+            content_type="application/json",
+        )
+
+    def test_only_the_three_club_accounts_can_log_in(self):
+        self.assertEqual(self.login("other").status_code, 401)
+        response = self.login()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["mustChangePassword"])
+        self.assertTrue(User.objects.filter(username="mazen", is_superuser=True).exists())
+
+    def test_first_login_blocks_operational_api_until_password_changes(self):
+        self.login()
+        self.assertEqual(self.client.get("/api/dashboard").status_code, 403)
+        response = self.client.post(
+            "/api/auth/change-password",
+            data={"currentPassword": "InitialPass123!", "newPassword": "NewPass123!"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["mustChangePassword"])
+        self.assertEqual(self.client.get("/api/dashboard").status_code, 200)
+
+    def test_recovery_code_resets_a_password(self):
+        self.login("ahmed")
+        response = self.client.post(
+            "/api/auth/reset-password",
+            data={"username": "ahmed", "recoveryCode": "recovery-code", "newPassword": "ResetPass123!"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.client.post("/api/auth/logout")
+        self.assertEqual(self.login("ahmed", "ResetPass123!").status_code, 200)

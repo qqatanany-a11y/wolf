@@ -987,7 +987,7 @@ export const getGetProfitReportUrl = (params: GetProfitReportParams,) => {
 }
 
 /**
- * @summary Get revenue and profit report
+ * @summary Get revenue report
  */
 export const getProfitReport = async (params: GetProfitReportParams, options?: Parameters<typeof customFetch>[1]): Promise<ProfitReport> => {
 
@@ -1034,7 +1034,7 @@ export type GetProfitReportQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get revenue and profit report
+ * @summary Get revenue report
  */
 
 export function useGetProfitReport<TData = Awaited<ReturnType<typeof getProfitReport>>, TError = ErrorType<unknown>>(

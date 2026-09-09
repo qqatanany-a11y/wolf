@@ -13,7 +13,6 @@ export interface Dashboard {
   date: Date;
   resources: Resource[];
   revenue: number;
-  profit: number;
   activeSessions: number;
   openOrders: number;
   paymentMix: DashboardPaymentMix;

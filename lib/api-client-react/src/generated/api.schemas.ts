@@ -62,6 +62,7 @@ export type SessionStatus = typeof SessionStatus[keyof typeof SessionStatus];
 
 export const SessionStatus = {
   active: 'active',
+  paused: 'paused',
   completed: 'completed',
   overdue: 'overdue',
 } as const;
@@ -128,7 +129,6 @@ export interface Order {
   name?: string;
   subtotal: number;
   total: number;
-  profit: number;
   /** @nullable */
   paymentMethod?: OrderPaymentMethod;
   /** @nullable */
@@ -146,6 +146,8 @@ export interface Session {
   startedAt: string;
   /** @nullable */
   endedAt?: string | null;
+  /** @nullable */
+  pausedAt?: string | null;
   /** @nullable */
   endsAt?: string | null;
   /** @nullable */
@@ -186,6 +188,8 @@ export type SessionUpdateAction = typeof SessionUpdateAction[keyof typeof Sessio
 
 
 export const SessionUpdateAction = {
+  pause: 'pause',
+  resume: 'resume',
   stop: 'stop',
   extend: 'extend',
 } as const;
@@ -217,7 +221,6 @@ export interface Product {
   name: string;
   category: string;
   price: number;
-  cost: number;
   isActive: boolean;
 }
 
@@ -228,8 +231,6 @@ export interface ProductInput {
   category: string;
   /** @minimum 0 */
   price: number;
-  /** @minimum 0 */
-  cost: number;
 }
 
 export interface OrderItemInput {
@@ -297,7 +298,6 @@ export interface Dashboard {
   date: string;
   resources: Resource[];
   revenue: number;
-  profit: number;
   activeSessions: number;
   openOrders: number;
   paymentMix: DashboardPaymentMix;
@@ -312,7 +312,6 @@ export type ProfitReportByPaymentMethod = {
 export type ProfitReportByDayItem = {
   date: string;
   revenue: number;
-  profit: number;
   cash: number;
   cliq: number;
 };
@@ -321,8 +320,6 @@ export interface ProfitReport {
   from: string;
   to: string;
   revenue: number;
-  cost: number;
-  profit: number;
   sessionRevenue: number;
   cafeteriaRevenue: number;
   byPaymentMethod: ProfitReportByPaymentMethod;

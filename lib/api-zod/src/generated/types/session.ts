@@ -23,6 +23,8 @@ export interface Session {
   /** @nullable */
   endedAt?: Date | null;
   /** @nullable */
+  pausedAt?: Date | null;
+  /** @nullable */
   endsAt?: Date | null;
   /** @nullable */
   durationMinutes?: number | null;
