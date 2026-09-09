@@ -43,11 +43,13 @@ def refresh_overdue():
 
 def session_json(session):
     now = timezone.now()
-    ended_at = session.ended_at or now
-    elapsed = max(0, int((ended_at - session.started_at).total_seconds()))
+    elapsed = session.elapsed_seconds
+    session_total = session.total
     remaining = None
     if session.ends_at:
         remaining = int((session.ends_at - now).total_seconds())
+    cafeteria_orders = list(session.orders.prefetch_related("items__product").all())
+    cafeteria_total = sum((order.subtotal for order in cafeteria_orders), Decimal("0.00"))
     return {
         "id": session.id,
         "resourceId": session.resource_id,
@@ -62,7 +64,11 @@ def session_json(session):
         "elapsedSeconds": elapsed,
         "remainingSeconds": remaining,
         "hourlyRate": money(session.resource.hourly_rate),
-        "total": money(Decimal(elapsed) / Decimal(3600) * session.resource.hourly_rate),
+        "total": money(session_total),
+        "cafeteriaTotal": money(cafeteria_total),
+        "grandTotal": money(session_total + cafeteria_total),
+        "cafeteriaOrderCount": len(cafeteria_orders),
+        "cafeteriaOrders": [order_json(order) for order in cafeteria_orders],
         "paymentStatus": session.payment_status,
         "paymentMethod": session.payment_method,
     }
@@ -122,36 +128,69 @@ def order_json(order):
             for item in items
         ],
         "status": order.status,
+        "name": order.name,
         "subtotal": money(subtotal),
         "total": money(subtotal),
         "profit": money(profit),
         "paymentMethod": order.payment_method,
+        "sessionId": order.session_id,
         "createdAt": order.created_at.isoformat(),
     }
 
 
+@csrf_exempt
 def resources(request):
     refresh_overdue()
-    return JsonResponse([resource_json(resource) for resource in Resource.objects.all()], safe=False)
+    if request.method == "GET":
+        return JsonResponse(
+            [resource_json(resource) for resource in Resource.objects.filter(is_active=True)],
+            safe=False,
+        )
+    if request.method != "POST":
+        return error("Method not allowed", 405)
+    data = body(request)
+    try:
+        resource = Resource.objects.create(
+            name=str(data["name"]).strip(),
+            kind=data["kind"],
+            hourly_rate=Decimal(str(data["hourlyRate"])),
+        )
+    except (KeyError, ValueError, TypeError, ArithmeticError):
+        return error("Name, kind, and hourly rate are required")
+    if not resource.name or resource.kind not in {"snooker", "billiards", "playstation"} or resource.hourly_rate < 0:
+        resource.delete()
+        return error("Provide a name, valid resource kind, and non-negative hourly rate")
+    return JsonResponse(resource_json(resource), status=201)
 
 
 @csrf_exempt
 def resource_detail(request, resource_id):
-    if request.method != "PATCH":
-        return error("Method not allowed", 405)
     try:
         resource = Resource.objects.get(pk=resource_id)
     except Resource.DoesNotExist:
         return error("Resource not found", 404)
-    value = body(request).get("hourlyRate")
+    if request.method == "DELETE":
+        if resource.sessions.filter(ended_at__isnull=True).exists():
+            return error("Close the active session before removing this resource", 409)
+        resource.is_active = False
+        resource.save(update_fields=["is_active"])
+        return JsonResponse({}, status=204)
+    if request.method != "PATCH":
+        return error("Method not allowed", 405)
+    data = body(request)
+    if "name" in data:
+        resource.name = str(data["name"]).strip()
+    if "kind" in data:
+        resource.kind = data["kind"]
+    value = data.get("hourlyRate", resource.hourly_rate)
     try:
         rate = Decimal(str(value))
     except (TypeError, ValueError, ArithmeticError):
         return error("Hourly rate must be a valid number")
-    if rate < 0:
-        return error("Hourly rate cannot be negative")
+    if rate < 0 or not resource.name or resource.kind not in {"snooker", "billiards", "playstation"}:
+        return error("Provide a name, valid resource kind, and non-negative hourly rate")
     resource.hourly_rate = rate.quantize(MONEY)
-    resource.save(update_fields=["hourly_rate"])
+    resource.save(update_fields=["name", "kind", "hourly_rate"])
     return JsonResponse(resource_json(resource))
 
 
@@ -225,13 +264,68 @@ def session_detail(request, session_id):
         payment_method = data.get("paymentMethod")
         if payment_method not in {"cash", "cliq"}:
             return error("Choose cash or CliQ before closing the session")
-        session.ended_at = timezone.now()
-        session.status = "completed"
-        session.payment_status = "paid"
-        session.payment_method = payment_method
-        session.save(update_fields=["ended_at", "status", "payment_status", "payment_method"])
+        with transaction.atomic():
+            session.ended_at = timezone.now()
+            session.status = "completed"
+            session.payment_status = "paid"
+            session.payment_method = payment_method
+            session.save(update_fields=["ended_at", "status", "payment_status", "payment_method"])
+            session.orders.filter(status="open").update(
+                status="paid", payment_method=payment_method
+            )
     else:
         return error("Action must be stop or extend")
+    return JsonResponse(session_json(session))
+
+
+@csrf_exempt
+def session_cafeteria_items(request, session_id):
+    if request.method != "PATCH":
+        return error("Method not allowed", 405)
+    try:
+        session = PlayingSession.objects.select_related("resource").get(
+            pk=session_id, ended_at__isnull=True
+        )
+    except PlayingSession.DoesNotExist:
+        return error("Open session not found", 404)
+    data = body(request)
+    try:
+        product = Product.objects.get(pk=data["productId"], is_active=True)
+        delta = int(data["quantityDelta"])
+    except (Product.DoesNotExist, KeyError, TypeError, ValueError):
+        return error("Choose an active product and a valid quantity change")
+    if delta not in {-1, 1}:
+        return error("Quantity change must be one item at a time")
+    with transaction.atomic():
+        items = OrderItem.objects.select_related("order").filter(
+            order__session=session, order__status="open", product=product
+        ).order_by("-id")
+        item = items.first()
+        if delta == 1:
+            if item:
+                item.quantity += 1
+                item.save(update_fields=["quantity"])
+            else:
+                order = session.orders.filter(status="open").order_by("id").first()
+                if not order:
+                    order = Order.objects.create(session=session)
+                OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=1,
+                    unit_price=product.price,
+                    unit_cost=product.cost,
+                )
+        elif not item:
+            return error("That product is not on this session bill")
+        elif item.quantity == 1:
+            order = item.order
+            item.delete()
+            if not order.items.exists():
+                order.delete()
+        else:
+            item.quantity -= 1
+            item.save(update_fields=["quantity"])
     return JsonResponse(session_json(session))
 
 
@@ -257,6 +351,33 @@ def products(request):
 
 
 @csrf_exempt
+def product_detail(request, product_id):
+    try:
+        product = Product.objects.get(pk=product_id)
+    except Product.DoesNotExist:
+        return error("Product not found", 404)
+    if request.method == "DELETE":
+        product.is_active = False
+        product.save(update_fields=["is_active"])
+        return JsonResponse({}, status=204)
+    if request.method != "PATCH":
+        return error("Method not allowed", 405)
+    data = body(request)
+    try:
+        product.name = str(data.get("name", product.name)).strip()
+        product.category = str(data.get("category", product.category)).strip()
+        product.price = Decimal(str(data.get("price", product.price))).quantize(MONEY)
+        product.cost = Decimal(str(data.get("cost", product.cost))).quantize(MONEY)
+        product.is_active = bool(data.get("isActive", product.is_active))
+    except (ValueError, TypeError, ArithmeticError):
+        return error("Product details are invalid")
+    if not product.name or not product.category or product.price < 0 or product.cost < 0:
+        return error("Product name, category, price, and cost are required")
+    product.save()
+    return JsonResponse(product_json(product))
+
+
+@csrf_exempt
 def orders(request):
     if request.method == "GET":
         query = Order.objects.prefetch_related("items__product").all()
@@ -275,7 +396,11 @@ def orders(request):
         return error("An order needs at least one item")
     try:
         with transaction.atomic():
-            order = Order.objects.create()
+            session = None
+            session_id = data.get("sessionId")
+            if session_id is not None:
+                session = PlayingSession.objects.get(pk=session_id, ended_at__isnull=True)
+            order = Order.objects.create(session=session, name=str(data.get("name", "")).strip())
             for item in items:
                 product = Product.objects.get(pk=item["productId"], is_active=True)
                 quantity = int(item["quantity"])
@@ -288,8 +413,8 @@ def orders(request):
                     unit_price=product.price,
                     unit_cost=product.cost,
                 )
-    except (Product.DoesNotExist, KeyError, ValueError, TypeError):
-        return error("Every order item must reference an active product and positive quantity")
+    except (PlayingSession.DoesNotExist, Product.DoesNotExist, KeyError, ValueError, TypeError):
+        return error("Every order item must reference an active product and positive quantity; sessions must be open")
     return JsonResponse(order_json(order), status=201)
 
 
@@ -307,6 +432,40 @@ def pay_order(request, order_id):
     order.status = "paid"
     order.payment_method = method
     order.save(update_fields=["status", "payment_method"])
+    return JsonResponse(order_json(order))
+
+
+@csrf_exempt
+def order_items(request, order_id):
+    if request.method != "PATCH":
+        return error("Method not allowed", 405)
+    try:
+        order = Order.objects.get(pk=order_id, status="open", session__isnull=True)
+    except Order.DoesNotExist:
+        return error("Open counter order not found", 404)
+    data = body(request)
+    try:
+        product = Product.objects.get(pk=data["productId"], is_active=True)
+        delta = int(data["quantityDelta"])
+    except (Product.DoesNotExist, KeyError, TypeError, ValueError):
+        return error("Choose an active product and a valid quantity change")
+    if delta not in {-1, 1}:
+        return error("Quantity change must be one item at a time")
+    with transaction.atomic():
+        item = OrderItem.objects.filter(order=order, product=product).first()
+        if delta == 1:
+            if item:
+                item.quantity += 1
+                item.save(update_fields=["quantity"])
+            else:
+                OrderItem.objects.create(order=order, product=product, quantity=1, unit_price=product.price, unit_cost=product.cost)
+        elif not item:
+            return error("That product is not on this order")
+        elif item.quantity == 1:
+            item.delete()
+        else:
+            item.quantity -= 1
+            item.save(update_fields=["quantity"])
     return JsonResponse(order_json(order))
 
 
@@ -391,17 +550,26 @@ def profit_report(request):
         (item.subtotal - item.profit for item in orders_query), Decimal("0.00")
     )
     payment_totals = {"cash": Decimal("0.00"), "cliq": Decimal("0.00")}
-    by_day = defaultdict(lambda: {"revenue": Decimal("0.00"), "profit": Decimal("0.00")})
+    by_day = defaultdict(
+        lambda: {
+            "revenue": Decimal("0.00"),
+            "profit": Decimal("0.00"),
+            "cash": Decimal("0.00"),
+            "cliq": Decimal("0.00"),
+        }
+    )
     for item in sessions_query:
         payment_totals[item.payment_method] += item.total
         day = item.ended_at.date().isoformat()
         by_day[day]["revenue"] += item.total
         by_day[day]["profit"] += item.total
+        by_day[day][item.payment_method] += item.total
     for item in orders_query:
         payment_totals[item.payment_method] += item.subtotal
         day = item.created_at.date().isoformat()
         by_day[day]["revenue"] += item.subtotal
         by_day[day]["profit"] += item.profit
+        by_day[day][item.payment_method] += item.subtotal
     revenue = session_revenue + cafeteria_revenue
     cost = cafeteria_cost
     return JsonResponse(
@@ -415,7 +583,13 @@ def profit_report(request):
             "cafeteriaRevenue": money(cafeteria_revenue),
             "byPaymentMethod": {key: money(value) for key, value in payment_totals.items()},
             "byDay": [
-                {"date": day, "revenue": money(values["revenue"]), "profit": money(values["profit"])}
+                {
+                    "date": day,
+                    "revenue": money(values["revenue"]),
+                    "profit": money(values["profit"]),
+                    "cash": money(values["cash"]),
+                    "cliq": money(values["cliq"]),
+                }
                 for day, values in sorted(by_day.items())
             ],
         }

@@ -93,6 +93,49 @@ export const SessionPaymentMethod = {
   cliq: 'cliq',
 } as const;
 
+export interface OrderItem {
+  productId: number;
+  productName: string;
+  /** @minimum 1 */
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
+
+
+export const OrderStatus = {
+  open: 'open',
+  paid: 'paid',
+} as const;
+
+/**
+ * @nullable
+ */
+export type OrderPaymentMethod = typeof OrderPaymentMethod[keyof typeof OrderPaymentMethod] | null;
+
+
+export const OrderPaymentMethod = {
+  cash: 'cash',
+  cliq: 'cliq',
+} as const;
+
+export interface Order {
+  id: number;
+  items: OrderItem[];
+  status: OrderStatus;
+  name?: string;
+  subtotal: number;
+  total: number;
+  profit: number;
+  /** @nullable */
+  paymentMethod?: OrderPaymentMethod;
+  /** @nullable */
+  sessionId?: number | null;
+  createdAt: string;
+}
+
 export interface Session {
   id: number;
   resourceId: number;
@@ -112,6 +155,10 @@ export interface Session {
   remainingSeconds?: number | null;
   hourlyRate: number;
   total: number;
+  cafeteriaTotal: number;
+  grandTotal: number;
+  cafeteriaOrderCount: number;
+  cafeteriaOrders: Order[];
   paymentStatus?: SessionPaymentStatus;
   /** @nullable */
   paymentMethod?: SessionPaymentMethod;
@@ -185,46 +232,6 @@ export interface ProductInput {
   cost: number;
 }
 
-export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
-
-
-export const OrderStatus = {
-  open: 'open',
-  paid: 'paid',
-} as const;
-
-/**
- * @nullable
- */
-export type OrderPaymentMethod = typeof OrderPaymentMethod[keyof typeof OrderPaymentMethod] | null;
-
-
-export const OrderPaymentMethod = {
-  cash: 'cash',
-  cliq: 'cliq',
-} as const;
-
-export interface OrderItem {
-  productId: number;
-  productName: string;
-  /** @minimum 1 */
-  quantity: number;
-  unitPrice: number;
-  lineTotal: number;
-}
-
-export interface Order {
-  id: number;
-  items: OrderItem[];
-  status: OrderStatus;
-  subtotal: number;
-  total: number;
-  profit: number;
-  /** @nullable */
-  paymentMethod?: OrderPaymentMethod;
-  createdAt: string;
-}
-
 export interface OrderItemInput {
   productId: number;
   /** @minimum 1 */
@@ -232,6 +239,10 @@ export interface OrderItemInput {
 }
 
 export interface OrderInput {
+  /** @maxLength 120 */
+  name?: string;
+  /** @nullable */
+  sessionId?: number | null;
   /** @minItems 1 */
   items: OrderItemInput[];
 }
@@ -302,6 +313,8 @@ export type ProfitReportByDayItem = {
   date: string;
   revenue: number;
   profit: number;
+  cash: number;
+  cliq: number;
 };
 
 export interface ProfitReport {

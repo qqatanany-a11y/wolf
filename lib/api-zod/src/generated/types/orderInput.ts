@@ -8,6 +8,10 @@
 import type { OrderItemInput } from './orderItemInput';
 
 export interface OrderInput {
+  /** @maxLength 120 */
+  name?: string;
+  /** @nullable */
+  sessionId?: number | null;
   /** @minItems 1 */
   items: OrderItemInput[];
 }

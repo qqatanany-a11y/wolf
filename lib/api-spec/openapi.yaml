@@ -309,7 +309,7 @@ components:
         hourlyRate: { type: number, minimum: 0 }
     Session:
       type: object
-      required: [id, resourceId, resourceName, resourceKind, status, mode, startedAt, hourlyRate, total]
+      required: [id, resourceId, resourceName, resourceKind, status, mode, startedAt, hourlyRate, total, cafeteriaTotal, grandTotal, cafeteriaOrderCount, cafeteriaOrders]
       properties:
         id: { type: integer }
         resourceId: { type: integer }
@@ -331,6 +331,13 @@ components:
         remainingSeconds: { type: ["integer", "null"] }
         hourlyRate: { type: number }
         total: { type: number }
+        cafeteriaTotal: { type: number }
+        grandTotal: { type: number }
+        cafeteriaOrderCount: { type: integer }
+        cafeteriaOrders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
         paymentStatus:
           type: string
           enum: [unpaid, paid]
@@ -386,12 +393,14 @@ components:
         status:
           type: string
           enum: [open, paid]
+        name: { type: string }
         subtotal: { type: number }
         total: { type: number }
         profit: { type: number }
         paymentMethod:
           type: ["string", "null"]
           enum: [cash, cliq, null]
+        sessionId: { type: ["integer", "null"] }
         createdAt: { type: string, format: date-time }
     OrderItem:
       type: object
@@ -406,6 +415,8 @@ components:
       type: object
       required: [items]
       properties:
+        name: { type: string, maxLength: 120 }
+        sessionId: { type: ["integer", "null"] }
         items:
           type: array
           minItems: 1
@@ -482,9 +493,10 @@ components:
           type: array
           items:
             type: object
-            required: [date, revenue, profit]
+            required: [date, revenue, profit, cash, cliq]
             properties:
               date: { type: string, format: date }
               revenue: { type: number }
               profit: { type: number }
-
+              cash: { type: number }
+              cliq: { type: number }

@@ -107,6 +107,9 @@ export const ListSessionsQueryParams = zod.object({
   "date": zod.date().optional()
 })
 
+
+
+
 export const ListSessionsResponseItem = zod.object({
   "id": zod.number().int(),
   "resourceId": zod.number().int(),
@@ -122,6 +125,27 @@ export const ListSessionsResponseItem = zod.object({
   "remainingSeconds": zod.number().int().nullish(),
   "hourlyRate": zod.number(),
   "total": zod.number(),
+  "cafeteriaTotal": zod.number(),
+  "grandTotal": zod.number(),
+  "cafeteriaOrderCount": zod.number().int(),
+  "cafeteriaOrders": zod.array(zod.object({
+  "id": zod.number().int(),
+  "items": zod.array(zod.object({
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "quantity": zod.number().int().min(1),
+  "unitPrice": zod.number(),
+  "lineTotal": zod.number()
+})),
+  "status": zod.enum(['open', 'paid']),
+  "name": zod.string().optional(),
+  "subtotal": zod.number(),
+  "total": zod.number(),
+  "profit": zod.number(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "sessionId": zod.number().int().nullish(),
+  "createdAt": zod.coerce.date()
+})),
   "paymentStatus": zod.enum(['unpaid', 'paid']).optional(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
 })
@@ -140,6 +164,9 @@ export const CreateSessionBody = zod.object({
   "durationMinutes": zod.number().int().min(1).nullish()
 })
 
+
+
+
 export const CreateSessionResponse = zod.object({
   "id": zod.number().int(),
   "resourceId": zod.number().int(),
@@ -155,6 +182,27 @@ export const CreateSessionResponse = zod.object({
   "remainingSeconds": zod.number().int().nullish(),
   "hourlyRate": zod.number(),
   "total": zod.number(),
+  "cafeteriaTotal": zod.number(),
+  "grandTotal": zod.number(),
+  "cafeteriaOrderCount": zod.number().int(),
+  "cafeteriaOrders": zod.array(zod.object({
+  "id": zod.number().int(),
+  "items": zod.array(zod.object({
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "quantity": zod.number().int().min(1),
+  "unitPrice": zod.number(),
+  "lineTotal": zod.number()
+})),
+  "status": zod.enum(['open', 'paid']),
+  "name": zod.string().optional(),
+  "subtotal": zod.number(),
+  "total": zod.number(),
+  "profit": zod.number(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "sessionId": zod.number().int().nullish(),
+  "createdAt": zod.coerce.date()
+})),
   "paymentStatus": zod.enum(['unpaid', 'paid']).optional(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
 })
@@ -176,6 +224,9 @@ export const UpdateSessionBody = zod.object({
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
 })
 
+
+
+
 export const UpdateSessionResponse = zod.object({
   "id": zod.number().int(),
   "resourceId": zod.number().int(),
@@ -191,6 +242,27 @@ export const UpdateSessionResponse = zod.object({
   "remainingSeconds": zod.number().int().nullish(),
   "hourlyRate": zod.number(),
   "total": zod.number(),
+  "cafeteriaTotal": zod.number(),
+  "grandTotal": zod.number(),
+  "cafeteriaOrderCount": zod.number().int(),
+  "cafeteriaOrders": zod.array(zod.object({
+  "id": zod.number().int(),
+  "items": zod.array(zod.object({
+  "productId": zod.number().int(),
+  "productName": zod.string(),
+  "quantity": zod.number().int().min(1),
+  "unitPrice": zod.number(),
+  "lineTotal": zod.number()
+})),
+  "status": zod.enum(['open', 'paid']),
+  "name": zod.string().optional(),
+  "subtotal": zod.number(),
+  "total": zod.number(),
+  "profit": zod.number(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "sessionId": zod.number().int().nullish(),
+  "createdAt": zod.coerce.date()
+})),
   "paymentStatus": zod.enum(['unpaid', 'paid']).optional(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
 })
@@ -261,10 +333,12 @@ export const ListOrdersResponseItem = zod.object({
   "lineTotal": zod.number()
 })),
   "status": zod.enum(['open', 'paid']),
+  "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
   "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
 })
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem)
@@ -273,11 +347,15 @@ export const ListOrdersResponse = zod.array(ListOrdersResponseItem)
 /**
  * @summary Create a cafeteria order
  */
+export const createOrderBodyNameMax = 120;
+
 
 
 
 
 export const CreateOrderBody = zod.object({
+  "name": zod.string().max(createOrderBodyNameMax).optional(),
+  "sessionId": zod.number().int().nullish(),
   "items": zod.array(zod.object({
   "productId": zod.number().int(),
   "quantity": zod.number().int().min(1)
@@ -297,10 +375,12 @@ export const CreateOrderResponse = zod.object({
   "lineTotal": zod.number()
 })),
   "status": zod.enum(['open', 'paid']),
+  "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
   "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
 })
 
@@ -329,10 +409,12 @@ export const PayOrderResponse = zod.object({
   "lineTotal": zod.number()
 })),
   "status": zod.enum(['open', 'paid']),
+  "name": zod.string().optional(),
   "subtotal": zod.number(),
   "total": zod.number(),
   "profit": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date()
 })
 
@@ -360,7 +442,9 @@ export const GetProfitReportResponse = zod.object({
   "byDay": zod.array(zod.object({
   "date": zod.coerce.date(),
   "revenue": zod.number(),
-  "profit": zod.number()
+  "profit": zod.number(),
+  "cash": zod.number(),
+  "cliq": zod.number()
 }))
 })
 

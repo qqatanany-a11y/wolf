@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Order } from './order';
 import type { SessionMode } from './sessionMode';
 import type { SessionPaymentMethod } from './sessionPaymentMethod';
 import type { SessionPaymentStatus } from './sessionPaymentStatus';
@@ -30,6 +31,10 @@ export interface Session {
   remainingSeconds?: number | null;
   hourlyRate: number;
   total: number;
+  cafeteriaTotal: number;
+  grandTotal: number;
+  cafeteriaOrderCount: number;
+  cafeteriaOrders: Order[];
   paymentStatus?: SessionPaymentStatus;
   /** @nullable */
   paymentMethod?: SessionPaymentMethod;

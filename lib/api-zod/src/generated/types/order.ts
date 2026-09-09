@@ -13,10 +13,13 @@ export interface Order {
   id: number;
   items: OrderItem[];
   status: OrderStatus;
+  name?: string;
   subtotal: number;
   total: number;
   profit: number;
   /** @nullable */
   paymentMethod?: OrderPaymentMethod;
+  /** @nullable */
+  sessionId?: number | null;
   createdAt: Date;
 }

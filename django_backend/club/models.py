@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import models
 
@@ -51,9 +51,18 @@ class PlayingSession(models.Model):
         return max(0, int((end - self.started_at).total_seconds()))
 
     @property
+    def billed_seconds(self):
+        half_hour_seconds = 30 * 60
+        return max(
+            half_hour_seconds,
+            ((self.elapsed_seconds + half_hour_seconds - 1) // half_hour_seconds)
+            * half_hour_seconds,
+        )
+
+    @property
     def total(self):
-        return (Decimal(self.elapsed_seconds) / Decimal(3600) * self.resource.hourly_rate).quantize(
-            Decimal("0.01")
+        return (Decimal(self.billed_seconds) / Decimal(3600) * self.resource.hourly_rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
         )
 
 
@@ -73,7 +82,15 @@ class Order(models.Model):
     STATUS_CHOICES = [("open", "Open"), ("paid", "Paid")]
 
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="open")
+    name = models.CharField(max_length=120, blank=True)
     payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, null=True, blank=True)
+    session = models.ForeignKey(
+        PlayingSession,
+        on_delete=models.PROTECT,
+        related_name="orders",
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property

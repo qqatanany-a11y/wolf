@@ -10,4 +10,6 @@ export type ProfitReportByDayItem = {
   date: Date;
   revenue: number;
   profit: number;
+  cash: number;
+  cliq: number;
 };
