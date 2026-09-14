@@ -518,3 +518,7 @@ body.session-cafeteria-only .fixed.inset-0.z-50 > .max-w-2xl > .grid > .p-5 > .m
   .mobile-scroll { overflow-x: auto; }
   .mobile-scroll > * { min-width: 580px; }
 }
+[class~="bg-primary/35"],
+[class~="bg-black/70"] {
+  background-color: transparent !important;
+}

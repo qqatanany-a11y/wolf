@@ -140,3 +140,19 @@ Error: connect ECONNREFUSED 127.0.0.1:8000
 11:28:15 PM [vite] http proxy error: /api/auth/me
 Error: connect ECONNREFUSED 127.0.0.1:8000
     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+12:11:48 AM [vite] http proxy error: /api/resources
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+12:11:48 AM [vite] http proxy error: /api/products
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+12:11:48 AM [vite] http proxy error: /api/sessions?status=active
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+12:11:48 AM [vite] http proxy error: /api/auth/me
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+12:41:07 AM [vite] (client) Pre-transform error: Failed to load url /@fs/C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.ts (resolved id: C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.ts) in C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/index.ts. Does the file exist?
+12:41:07 AM [vite] (client) Pre-transform error: Failed to load url /@fs/C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.schemas.ts (resolved id: C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.schemas.ts) in C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/index.ts. Does the file exist?
+12:45:39 AM [vite] (client) Pre-transform error: Failed to load url /@fs/C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.ts (resolved id: C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.ts) in C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/index.ts. Does the file exist?
+12:45:39 AM [vite] (client) Pre-transform error: Failed to load url /@fs/C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.schemas.ts (resolved id: C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/generated/api.schemas.ts) in C:/Users/qusai/OneDrive/Desktop/Billiards-Club-Management/lib/api-client-react/src/index.ts. Does the file exist?

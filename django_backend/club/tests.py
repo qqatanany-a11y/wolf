@@ -8,6 +8,25 @@ from django.test import override_settings
 from django.contrib.auth.models import User
 
 from .models import PlayingSession, Resource
+from .views import invoice_discount
+
+
+class InvoiceDiscountTests(TestCase):
+    def test_percentage_discount_is_converted_to_a_money_amount(self):
+        amount, discount_type, value, reason = invoice_discount(
+            {"discountType": "percentage", "discountValue": 12.5, "discountReason": "Member"},
+            Decimal("64.50"),
+        )
+        self.assertEqual(amount, Decimal("8.06"))
+        self.assertEqual(discount_type, "percentage")
+        self.assertEqual(value, Decimal("12.50"))
+        self.assertEqual(reason, "Member")
+
+    def test_fixed_discount_remains_backward_compatible(self):
+        amount, discount_type, value, _ = invoice_discount(
+            {"discountAmount": 3, "discountReason": "Offer"}, Decimal("10.00")
+        )
+        self.assertEqual((amount, discount_type, value), (Decimal("3.00"), "amount", Decimal("3.00")))
 
 
 class PlayingSessionBillingTests(TestCase):
@@ -57,6 +76,9 @@ class AuthenticationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["mustChangePassword"])
         self.assertTrue(User.objects.filter(username="mazen", is_superuser=True).exists())
+        self.assertEqual(self.login("ahmed").json()["role"], "super_admin")
+        self.assertFalse(User.objects.get(username="yazan").is_superuser)
+        self.assertEqual(self.login("yazan").json()["role"], "staff")
 
     def test_first_login_blocks_operational_api_until_password_changes(self):
         self.login()
@@ -69,6 +91,24 @@ class AuthenticationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["mustChangePassword"])
         self.assertEqual(self.client.get("/api/dashboard").status_code, 200)
+        self.assertEqual(self.client.get("/api/reports/audit").status_code, 200)
+
+    def test_yazan_cannot_access_reports_or_change_settings(self):
+        self.login("yazan")
+        self.client.post(
+            "/api/auth/change-password",
+            data={"currentPassword": "InitialPass123!", "newPassword": "NewPass123!"},
+            content_type="application/json",
+        )
+        self.assertEqual(self.client.get("/api/reports/audit").status_code, 403)
+        self.assertEqual(
+            self.client.post(
+                "/api/resources",
+                data={"name": "Unauthorized", "kind": "snooker", "hourlyRate": 5},
+                content_type="application/json",
+            ).status_code,
+            403,
+        )
 
     def test_recovery_code_resets_a_password(self):
         self.login("ahmed")

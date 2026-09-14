@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SessionUpdateAction } from './sessionUpdateAction';
+import type { SessionUpdateDiscountType } from './sessionUpdateDiscountType';
 import type { SessionUpdatePaymentMethod } from './sessionUpdatePaymentMethod';
 
 export interface SessionUpdate {
@@ -17,4 +18,9 @@ export interface SessionUpdate {
   durationMinutes?: number | null;
   /** @nullable */
   paymentMethod?: SessionUpdatePaymentMethod;
+  discountType?: SessionUpdateDiscountType;
+  /** @minimum 0 */
+  discountValue?: number;
+  /** @maxLength 250 */
+  discountReason?: string;
 }

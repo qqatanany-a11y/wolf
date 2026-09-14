@@ -5,8 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PaymentInputDiscountType } from './paymentInputDiscountType';
 import type { PaymentInputPaymentMethod } from './paymentInputPaymentMethod';
 
 export interface PaymentInput {
   paymentMethod: PaymentInputPaymentMethod;
+  discountType?: PaymentInputDiscountType;
+  /** @minimum 0 */
+  discountValue?: number;
+  /** @maxLength 250 */
+  discountReason?: string;
 }

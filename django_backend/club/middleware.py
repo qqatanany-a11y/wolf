@@ -9,6 +9,8 @@ PUBLIC_API_PATHS = {
     "/api/auth/reset-password",
 }
 PASSWORD_CHANGE_PATH = "/api/auth/change-password"
+REPORTS_PATH_PREFIX = "/api/reports/"
+MANAGEMENT_PATH_PREFIXES = ("/api/resources", "/api/products")
 
 
 class ClubApiAuthenticationMiddleware:
@@ -29,4 +31,15 @@ class ClubApiAuthenticationMiddleware:
                 {"error": "Password change required", "mustChangePassword": True},
                 status=403,
             )
+
+        # The floor staff account can operate the club, but cannot view financial
+        # reports or change the club configuration.  Keep this server-side so a
+        # manually entered URL or API request cannot bypass the UI.
+        if request.user.username == "yazan":
+            is_management_change = (
+                request.path.startswith(MANAGEMENT_PATH_PREFIXES)
+                and request.method != "GET"
+            )
+            if request.path.startswith(REPORTS_PATH_PREFIX) or is_management_change:
+                return JsonResponse({"error": "You do not have permission to access this page"}, status=403)
         return self.get_response(request)

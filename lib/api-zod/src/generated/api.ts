@@ -126,6 +126,11 @@ export const ListSessionsResponseItem = zod.object({
   "hourlyRate": zod.number(),
   "total": zod.number(),
   "cafeteriaTotal": zod.number(),
+  "subtotal": zod.number().optional(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "grandTotal": zod.number(),
   "cafeteriaOrderCount": zod.number().int(),
   "cafeteriaOrders": zod.array(zod.object({
@@ -142,11 +147,19 @@ export const ListSessionsResponseItem = zod.object({
   "subtotal": zod.number(),
   "total": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "sessionId": zod.number().int().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().optional(),
+  "paidBy": zod.string().optional()
 })),
   "paymentStatus": zod.enum(['unpaid', 'paid']).optional(),
-  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "createdBy": zod.string().optional(),
+  "completedBy": zod.string().optional()
 })
 export const ListSessionsResponse = zod.array(ListSessionsResponseItem)
 
@@ -183,6 +196,11 @@ export const CreateSessionResponse = zod.object({
   "hourlyRate": zod.number(),
   "total": zod.number(),
   "cafeteriaTotal": zod.number(),
+  "subtotal": zod.number().optional(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "grandTotal": zod.number(),
   "cafeteriaOrderCount": zod.number().int(),
   "cafeteriaOrders": zod.array(zod.object({
@@ -199,11 +217,19 @@ export const CreateSessionResponse = zod.object({
   "subtotal": zod.number(),
   "total": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "sessionId": zod.number().int().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().optional(),
+  "paidBy": zod.string().optional()
 })),
   "paymentStatus": zod.enum(['unpaid', 'paid']).optional(),
-  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "createdBy": zod.string().optional(),
+  "completedBy": zod.string().optional()
 })
 
 
@@ -215,12 +241,20 @@ export const UpdateSessionParams = zod.object({
 })
 
 
+export const updateSessionBodyDiscountTypeDefault = `amount`;
+export const updateSessionBodyDiscountValueMin = 0;
+
+export const updateSessionBodyDiscountReasonMax = 250;
+
 
 
 export const UpdateSessionBody = zod.object({
   "action": zod.enum(['pause', 'resume', 'stop', 'extend']).optional(),
   "durationMinutes": zod.number().int().min(1).nullish(),
-  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "discountType": zod.enum(['amount', 'percentage']).default(updateSessionBodyDiscountTypeDefault),
+  "discountValue": zod.number().min(updateSessionBodyDiscountValueMin).optional(),
+  "discountReason": zod.string().max(updateSessionBodyDiscountReasonMax).optional()
 })
 
 
@@ -243,6 +277,11 @@ export const UpdateSessionResponse = zod.object({
   "hourlyRate": zod.number(),
   "total": zod.number(),
   "cafeteriaTotal": zod.number(),
+  "subtotal": zod.number().optional(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "grandTotal": zod.number(),
   "cafeteriaOrderCount": zod.number().int(),
   "cafeteriaOrders": zod.array(zod.object({
@@ -259,11 +298,19 @@ export const UpdateSessionResponse = zod.object({
   "subtotal": zod.number(),
   "total": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "sessionId": zod.number().int().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().optional(),
+  "paidBy": zod.string().optional()
 })),
   "paymentStatus": zod.enum(['unpaid', 'paid']).optional(),
-  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish()
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "createdBy": zod.string().optional(),
+  "completedBy": zod.string().optional()
 })
 
 
@@ -331,8 +378,14 @@ export const ListOrdersResponseItem = zod.object({
   "subtotal": zod.number(),
   "total": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "sessionId": zod.number().int().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().optional(),
+  "paidBy": zod.string().optional()
 })
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem)
 
@@ -372,8 +425,14 @@ export const CreateOrderResponse = zod.object({
   "subtotal": zod.number(),
   "total": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "sessionId": zod.number().int().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().optional(),
+  "paidBy": zod.string().optional()
 })
 
 
@@ -384,8 +443,18 @@ export const PayOrderParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+export const payOrderBodyDiscountTypeDefault = `amount`;
+export const payOrderBodyDiscountValueMin = 0;
+
+export const payOrderBodyDiscountReasonMax = 250;
+
+
+
 export const PayOrderBody = zod.object({
-  "paymentMethod": zod.enum(['cash', 'cliq'])
+  "paymentMethod": zod.enum(['cash', 'cliq']),
+  "discountType": zod.enum(['amount', 'percentage']).default(payOrderBodyDiscountTypeDefault),
+  "discountValue": zod.number().min(payOrderBodyDiscountValueMin).optional(),
+  "discountReason": zod.string().max(payOrderBodyDiscountReasonMax).optional()
 })
 
 
@@ -405,8 +474,14 @@ export const PayOrderResponse = zod.object({
   "subtotal": zod.number(),
   "total": zod.number(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
+  "discountAmount": zod.number().optional(),
+  "discountType": zod.enum(['amount', 'percentage']).optional(),
+  "discountValue": zod.number().optional(),
+  "discountReason": zod.string().optional(),
   "sessionId": zod.number().int().nullish(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string().optional(),
+  "paidBy": zod.string().optional()
 })
 
 

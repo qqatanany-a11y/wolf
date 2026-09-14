@@ -333,6 +333,13 @@ components:
         hourlyRate: { type: number }
         total: { type: number }
         cafeteriaTotal: { type: number }
+        subtotal: { type: number }
+        discountAmount: { type: number }
+        discountType:
+          type: string
+          enum: [amount, percentage]
+        discountValue: { type: number }
+        discountReason: { type: string }
         grandTotal: { type: number }
         cafeteriaOrderCount: { type: integer }
         cafeteriaOrders:
@@ -366,6 +373,16 @@ components:
         paymentMethod:
           type: ["string", "null"]
           enum: [cash, cliq, null]
+        discountType:
+          type: string
+          enum: [amount, percentage]
+          default: amount
+        discountValue:
+          type: number
+          minimum: 0
+        discountReason:
+          type: string
+          maxLength: 250
     Product:
       type: object
       required: [id, name, category, price, isActive]
@@ -400,6 +417,12 @@ components:
         paymentMethod:
           type: ["string", "null"]
           enum: [cash, cliq, null]
+        discountAmount: { type: number }
+        discountType:
+          type: string
+          enum: [amount, percentage]
+        discountValue: { type: number }
+        discountReason: { type: string }
         sessionId: { type: ["integer", "null"] }
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
@@ -437,6 +460,16 @@ components:
         paymentMethod:
           type: string
           enum: [cash, cliq]
+        discountType:
+          type: string
+          enum: [amount, percentage]
+          default: amount
+        discountValue:
+          type: number
+          minimum: 0
+        discountReason:
+          type: string
+          maxLength: 250
     Dashboard:
       type: object
       required: [date, resources, revenue, activeSessions, openOrders, paymentMix, recentActivity]

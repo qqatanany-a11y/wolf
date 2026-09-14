@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { OrderDiscountType } from './orderDiscountType';
 import type { OrderItem } from './orderItem';
 import type { OrderPaymentMethod } from './orderPaymentMethod';
 import type { OrderStatus } from './orderStatus';
@@ -18,7 +19,13 @@ export interface Order {
   total: number;
   /** @nullable */
   paymentMethod?: OrderPaymentMethod;
+  discountAmount?: number;
+  discountType?: OrderDiscountType;
+  discountValue?: number;
+  discountReason?: string;
   /** @nullable */
   sessionId?: number | null;
   createdAt: Date;
+  createdBy?: string;
+  paidBy?: string;
 }

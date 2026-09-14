@@ -75,6 +75,14 @@ export const SessionMode = {
   limited: 'limited',
 } as const;
 
+export type SessionDiscountType = typeof SessionDiscountType[keyof typeof SessionDiscountType];
+
+
+export const SessionDiscountType = {
+  amount: 'amount',
+  percentage: 'percentage',
+} as const;
+
 export type SessionPaymentStatus = typeof SessionPaymentStatus[keyof typeof SessionPaymentStatus];
 
 
@@ -122,6 +130,14 @@ export const OrderPaymentMethod = {
   cliq: 'cliq',
 } as const;
 
+export type OrderDiscountType = typeof OrderDiscountType[keyof typeof OrderDiscountType];
+
+
+export const OrderDiscountType = {
+  amount: 'amount',
+  percentage: 'percentage',
+} as const;
+
 export interface Order {
   id: number;
   items: OrderItem[];
@@ -131,9 +147,15 @@ export interface Order {
   total: number;
   /** @nullable */
   paymentMethod?: OrderPaymentMethod;
+  discountAmount?: number;
+  discountType?: OrderDiscountType;
+  discountValue?: number;
+  discountReason?: string;
   /** @nullable */
   sessionId?: number | null;
   createdAt: string;
+  createdBy?: string;
+  paidBy?: string;
 }
 
 export interface Session {
@@ -158,12 +180,19 @@ export interface Session {
   hourlyRate: number;
   total: number;
   cafeteriaTotal: number;
+  subtotal?: number;
+  discountAmount?: number;
+  discountType?: SessionDiscountType;
+  discountValue?: number;
+  discountReason?: string;
   grandTotal: number;
   cafeteriaOrderCount: number;
   cafeteriaOrders: Order[];
   paymentStatus?: SessionPaymentStatus;
   /** @nullable */
   paymentMethod?: SessionPaymentMethod;
+  createdBy?: string;
+  completedBy?: string;
 }
 
 export type SessionInputMode = typeof SessionInputMode[keyof typeof SessionInputMode];
@@ -205,6 +234,14 @@ export const SessionUpdatePaymentMethod = {
   cliq: 'cliq',
 } as const;
 
+export type SessionUpdateDiscountType = typeof SessionUpdateDiscountType[keyof typeof SessionUpdateDiscountType];
+
+
+export const SessionUpdateDiscountType = {
+  amount: 'amount',
+  percentage: 'percentage',
+} as const;
+
 export interface SessionUpdate {
   action?: SessionUpdateAction;
   /**
@@ -214,6 +251,11 @@ export interface SessionUpdate {
   durationMinutes?: number | null;
   /** @nullable */
   paymentMethod?: SessionUpdatePaymentMethod;
+  discountType?: SessionUpdateDiscountType;
+  /** @minimum 0 */
+  discountValue?: number;
+  /** @maxLength 250 */
+  discountReason?: string;
 }
 
 export interface Product {
@@ -256,8 +298,21 @@ export const PaymentInputPaymentMethod = {
   cliq: 'cliq',
 } as const;
 
+export type PaymentInputDiscountType = typeof PaymentInputDiscountType[keyof typeof PaymentInputDiscountType];
+
+
+export const PaymentInputDiscountType = {
+  amount: 'amount',
+  percentage: 'percentage',
+} as const;
+
 export interface PaymentInput {
   paymentMethod: PaymentInputPaymentMethod;
+  discountType?: PaymentInputDiscountType;
+  /** @minimum 0 */
+  discountValue?: number;
+  /** @maxLength 250 */
+  discountReason?: string;
 }
 
 export type DashboardPaymentMix = {

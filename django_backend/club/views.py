@@ -18,10 +18,42 @@ from .models_order_items import OrderItem
 
 MONEY = Decimal("0.01")
 CLUB_USERNAMES = {"mazen", "ahmed", "yazan"}
+RESTRICTED_USERNAME = "yazan"
+SUPER_ADMIN_USERNAMES = CLUB_USERNAMES - {RESTRICTED_USERNAME}
+
+
+def is_super_admin(user):
+    return user.username in SUPER_ADMIN_USERNAMES
 
 
 def money(value):
     return float(Decimal(value).quantize(MONEY, rounding=ROUND_HALF_UP))
+
+
+def invoice_discount(data, invoice_total):
+    """Validate a fixed-JOD or percentage discount and calculate its JOD amount."""
+    discount_type = str(data.get("discountType", "amount")).strip().lower()
+    if discount_type not in {"amount", "percentage"}:
+        raise ValueError("Discount type must be amount or percentage")
+    try:
+        # Keep discountAmount as a fallback so existing clients remain compatible.
+        value = Decimal(str(data.get("discountValue", data.get("discountAmount", 0)))).quantize(MONEY)
+    except (ValueError, TypeError, ArithmeticError):
+        raise ValueError("Discount must be a valid number")
+    reason = str(data.get("discountReason", "")).strip()
+    if not value.is_finite() or value < 0:
+        raise ValueError("Discount must be a non-negative number")
+    if discount_type == "percentage":
+        if value > 100:
+            raise ValueError("Percentage discount must be between zero and 100")
+        amount = (invoice_total * value / Decimal("100")).quantize(MONEY, rounding=ROUND_HALF_UP)
+    else:
+        if value > invoice_total:
+            raise ValueError("Discount must be between zero and the invoice total")
+        amount = value
+    if amount > 0 and not reason:
+        raise ValueError("A discount reason is required")
+    return amount, discount_type, value, reason
 
 
 def body(request):
@@ -42,17 +74,24 @@ def audit(request, action, subject):
 def account_json(request):
     return {
         "username": request.user.username,
+        "role": "super_admin" if is_super_admin(request.user) else "staff",
         "mustChangePassword": bool(request.session.get("must_change_password")),
     }
 
 
 def ensure_club_accounts():
-    """Provision the three permitted admin accounts on their first use."""
+    """Provision club accounts and keep their roles in sync with access policy."""
     for username in CLUB_USERNAMES:
+        is_superuser = username in SUPER_ADMIN_USERNAMES
         user, created = User.objects.get_or_create(
             username=username,
-            defaults={"is_staff": True, "is_superuser": True},
+            defaults={"is_staff": True, "is_superuser": is_superuser},
         )
+        # Existing installations may have been created before roles were added.
+        if user.is_staff is not True or user.is_superuser != is_superuser:
+            user.is_staff = True
+            user.is_superuser = is_superuser
+            user.save(update_fields=["is_staff", "is_superuser"])
         security, security_created = AccountSecurity.objects.get_or_create(
             user=user, defaults={"force_password_change": True}
         )
@@ -158,6 +197,7 @@ def session_json(session):
         remaining = int((session.ends_at - now).total_seconds())
     cafeteria_orders = list(session.orders.prefetch_related("items__product").all())
     cafeteria_total = sum((order.subtotal for order in cafeteria_orders), Decimal("0.00"))
+    subtotal = session_total + cafeteria_total
     return {
         "id": session.id,
         "resourceId": session.resource_id,
@@ -175,7 +215,12 @@ def session_json(session):
         "hourlyRate": money(session.resource.hourly_rate),
         "total": money(session_total),
         "cafeteriaTotal": money(cafeteria_total),
-        "grandTotal": money(session_total + cafeteria_total),
+        "subtotal": money(subtotal),
+        "discountAmount": money(session.discount_amount),
+        "discountType": session.discount_type,
+        "discountValue": money(session.discount_value),
+        "discountReason": session.discount_reason,
+        "grandTotal": money(subtotal - session.discount_amount),
         "cafeteriaOrderCount": len(cafeteria_orders),
         "cafeteriaOrders": [order_json(order) for order in cafeteria_orders],
         "paymentStatus": session.payment_status,
@@ -240,7 +285,11 @@ def order_json(order):
         "status": order.status,
         "name": order.name,
         "subtotal": money(subtotal),
-        "total": money(subtotal),
+        "discountAmount": money(order.discount_amount),
+        "discountType": order.discount_type,
+        "discountValue": money(order.discount_value),
+        "discountReason": order.discount_reason,
+        "total": money(subtotal - order.discount_amount),
         "paymentMethod": order.payment_method,
         "sessionId": order.session_id,
         "createdAt": order.created_at.isoformat(),
@@ -414,16 +463,25 @@ def session_detail(request, session_id):
                 if session.ends_at:
                     session.ends_at += paused_for
                 session.paused_at = None
+            session_total = session.total + sum((order.subtotal for order in session.orders.all()), Decimal("0.00"))
+            try:
+                discount_amount, discount_type, discount_value, discount_reason = invoice_discount(data, session_total)
+            except ValueError as exc:
+                return error(str(exc))
             session.ended_at = timezone.now()
             session.status = "completed"
             session.payment_status = "paid"
             session.payment_method = payment_method
+            session.discount_amount = discount_amount
+            session.discount_type = discount_type
+            session.discount_value = discount_value
+            session.discount_reason = discount_reason
             session.completed_by = request.user
-            session.save(update_fields=["started_at", "ends_at", "paused_at", "ended_at", "status", "payment_status", "payment_method", "completed_by"])
+            session.save(update_fields=["started_at", "ends_at", "paused_at", "ended_at", "status", "payment_status", "payment_method", "discount_amount", "discount_type", "discount_value", "discount_reason", "completed_by"])
             session.orders.filter(status="open").update(
                 status="paid", payment_method=payment_method, paid_by=request.user
             )
-            audit(request, "Closed session", session.resource.name)
+            audit(request, "Closed session", f"{session.resource.name} (discount {money(discount_amount)})")
     else:
         return error("Action must be pause, resume, stop, or extend")
     return JsonResponse(session_json(session))
@@ -587,14 +645,23 @@ def pay_order(request, order_id):
         order = Order.objects.get(pk=order_id)
     except Order.DoesNotExist:
         return error("Order not found", 404)
-    method = body(request).get("paymentMethod")
+    data = body(request)
+    method = data.get("paymentMethod")
     if method not in {"cash", "cliq"}:
         return error("Choose cash or CliQ")
+    try:
+        discount_amount, discount_type, discount_value, discount_reason = invoice_discount(data, order.subtotal)
+    except ValueError as exc:
+        return error(str(exc))
     order.status = "paid"
     order.payment_method = method
     order.paid_by = request.user
-    order.save(update_fields=["status", "payment_method", "paid_by"])
-    audit(request, "Paid order", order.name or f"Order #{order.id}")
+    order.discount_amount = discount_amount
+    order.discount_type = discount_type
+    order.discount_value = discount_value
+    order.discount_reason = discount_reason
+    order.save(update_fields=["status", "payment_method", "discount_amount", "discount_type", "discount_value", "discount_reason", "paid_by"])
+    audit(request, "Paid order", f"{order.name or f'Order #{order.id}'} (discount {money(discount_amount)})")
     return JsonResponse(order_json(order))
 
 
@@ -657,7 +724,7 @@ def paid_sales(from_date, to_date):
         ended_at__date__lte=to_date,
     )
     orders_query = Order.objects.select_related("created_by", "paid_by").prefetch_related("items__product").filter(
-        status="paid", created_at__date__gte=from_date, created_at__date__lte=to_date
+        status="paid", session__isnull=True, created_at__date__gte=from_date, created_at__date__lte=to_date
     )
     return sessions_query, orders_query
 
@@ -666,14 +733,17 @@ def dashboard(request):
     refresh_overdue()
     today = timezone.localdate()
     sessions_query, orders_query = paid_sales(today, today)
-    session_revenue = sum((item.total for item in sessions_query), Decimal("0.00"))
-    cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
+    gross_session_revenue = sum((item.total for item in sessions_query), Decimal("0.00"))
+    gross_cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
+    discount_total = sum((item.discount_amount for item in sessions_query), Decimal("0.00")) + sum((item.discount_amount for item in orders_query), Decimal("0.00"))
+    session_revenue = gross_session_revenue - sum((item.discount_amount for item in sessions_query), Decimal("0.00"))
+    cafeteria_revenue = gross_cafeteria_revenue - sum((item.discount_amount for item in orders_query), Decimal("0.00"))
     cash = sum(
-        (item.total for item in sessions_query if item.payment_method == "cash"), Decimal("0.00")
-    ) + sum((item.subtotal for item in orders_query if item.payment_method == "cash"), Decimal("0.00"))
+        (item.total - item.discount_amount for item in sessions_query if item.payment_method == "cash"), Decimal("0.00")
+    ) + sum((item.subtotal - item.discount_amount for item in orders_query if item.payment_method == "cash"), Decimal("0.00"))
     cliq = sum(
-        (item.total for item in sessions_query if item.payment_method == "cliq"), Decimal("0.00")
-    ) + sum((item.subtotal for item in orders_query if item.payment_method == "cliq"), Decimal("0.00"))
+        (item.total - item.discount_amount for item in sessions_query if item.payment_method == "cliq"), Decimal("0.00")
+    ) + sum((item.subtotal - item.discount_amount for item in orders_query if item.payment_method == "cliq"), Decimal("0.00"))
     recent_sessions = PlayingSession.objects.select_related("resource").filter(
         status="completed", payment_status="paid"
     )[:5]
@@ -683,7 +753,7 @@ def dashboard(request):
             "id": item.id,
             "type": "session",
             "label": item.resource.name,
-            "amount": money(item.total),
+            "amount": money(item.total - item.discount_amount),
             "paymentMethod": item.payment_method,
             "createdAt": item.ended_at.isoformat() if item.ended_at else item.started_at.isoformat(),
         }
@@ -693,7 +763,7 @@ def dashboard(request):
             "id": item.id,
             "type": "cafeteria",
             "label": "Cafeteria order",
-            "amount": money(item.subtotal),
+            "amount": money(item.subtotal - item.discount_amount),
             "paymentMethod": item.payment_method,
             "createdAt": item.created_at.isoformat(),
         }
@@ -705,6 +775,8 @@ def dashboard(request):
             "date": today.isoformat(),
             "resources": [resource_json(resource) for resource in Resource.objects.all()],
             "revenue": money(session_revenue + cafeteria_revenue),
+            "grossRevenue": money(gross_session_revenue + gross_cafeteria_revenue),
+            "discountTotal": money(discount_total),
             "activeSessions": PlayingSession.objects.filter(ended_at__isnull=True).count(),
             "openOrders": Order.objects.filter(status="open").count(),
             "paymentMix": {"cash": money(cash), "cliq": money(cliq)},
@@ -722,32 +794,44 @@ def profit_report(request):
     if from_date > to_date:
         return error("from must be before to")
     sessions_query, orders_query = paid_sales(from_date, to_date)
-    session_revenue = sum((item.total for item in sessions_query), Decimal("0.00"))
-    cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
+    gross_session_revenue = sum((item.total for item in sessions_query), Decimal("0.00"))
+    gross_cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
+    session_discounts = sum((item.discount_amount for item in sessions_query), Decimal("0.00"))
+    cafeteria_discounts = sum((item.discount_amount for item in orders_query), Decimal("0.00"))
+    session_revenue = gross_session_revenue - session_discounts
+    cafeteria_revenue = gross_cafeteria_revenue - cafeteria_discounts
     payment_totals = {"cash": Decimal("0.00"), "cliq": Decimal("0.00")}
     by_day = defaultdict(
         lambda: {
             "revenue": Decimal("0.00"),
             "cash": Decimal("0.00"),
             "cliq": Decimal("0.00"),
+            "discounts": Decimal("0.00"),
         }
     )
     for item in sessions_query:
-        payment_totals[item.payment_method] += item.total
+        net_amount = item.total - item.discount_amount
+        payment_totals[item.payment_method] += net_amount
         day = item.ended_at.date().isoformat()
-        by_day[day]["revenue"] += item.total
-        by_day[day][item.payment_method] += item.total
+        by_day[day]["revenue"] += net_amount
+        by_day[day][item.payment_method] += net_amount
+        by_day[day]["discounts"] += item.discount_amount
     for item in orders_query:
-        payment_totals[item.payment_method] += item.subtotal
+        net_amount = item.subtotal - item.discount_amount
+        payment_totals[item.payment_method] += net_amount
         day = item.created_at.date().isoformat()
-        by_day[day]["revenue"] += item.subtotal
-        by_day[day][item.payment_method] += item.subtotal
+        by_day[day]["revenue"] += net_amount
+        by_day[day][item.payment_method] += net_amount
+        by_day[day]["discounts"] += item.discount_amount
     revenue = session_revenue + cafeteria_revenue
+    discount_total = session_discounts + cafeteria_discounts
     return JsonResponse(
         {
             "from": from_date.isoformat(),
             "to": to_date.isoformat(),
             "revenue": money(revenue),
+            "grossRevenue": money(gross_session_revenue + gross_cafeteria_revenue),
+            "discountTotal": money(discount_total),
             "sessionRevenue": money(session_revenue),
             "cafeteriaRevenue": money(cafeteria_revenue),
             "byPaymentMethod": {key: money(value) for key, value in payment_totals.items()},
@@ -757,6 +841,7 @@ def profit_report(request):
                     "revenue": money(values["revenue"]),
                     "cash": money(values["cash"]),
                     "cliq": money(values["cliq"]),
+                    "discounts": money(values["discounts"]),
                 }
                 for day, values in sorted(by_day.items())
             ],
