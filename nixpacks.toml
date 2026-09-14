@@ -10,6 +10,9 @@ cmds = [
 
 [phases.build]
 cmds = [
+  "npm install -g pnpm@9",
+  "pnpm install",
   "PORT=8080 BASE_PATH=/ pnpm --filter @workspace/club-operations run build",
-  "cd django_backend && python manage.py collectstatic --noinput"
+  "cd django_backend && python manage.py collectstatic --noinput",
+  "cd django_backend && python manage.py migrate"
 ]
