@@ -10,5 +10,6 @@ cmds = [
 
 [phases.build]
 cmds = [
-  "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/club-operations run build",
+  "PORT=8080 BASE_PATH=/ pnpm --filter @workspace/club-operations run build",
+  "cd django_backend && python manage.py collectstatic --noinput"
 ]
