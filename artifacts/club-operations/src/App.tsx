@@ -96,9 +96,21 @@ const timeLabel = (value: string) =>
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+const dateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const today = () => {
   const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return dateKey(date);
+};
+
+const reportDateFor = (value: string | Date | null | undefined) => {
+  if (!value) return null;
+  const date = new Date(value);
+  const hour = date.getHours();
+  if (hour >= 16) return dateKey(date);
+  if (hour >= 12) return null;
+  date.setDate(date.getDate() - 1);
+  return dateKey(date);
 };
 const secondsLabel = (seconds: number | null | undefined) => {
   const safe = Math.max(0, seconds ?? 0);
@@ -227,6 +239,7 @@ function SettlementDialog({
     discountType: "amount" | "percentage",
     discountValue: number,
     discountReason: string,
+    notes: string,
   ) => void;
   saving?: boolean;
 }) {
@@ -235,6 +248,7 @@ function SettlementDialog({
   );
   const [discountValue, setDiscountValue] = useState("");
   const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const value = discountValue.trim() === "" ? 0 : Number(discountValue);
   const amount =
@@ -257,7 +271,7 @@ function SettlementDialog({
       );
     if (amount > 0 && !reason.trim())
       return setError("A discount reason is required.");
-    onConfirm(paymentMethod, discountType, value, reason.trim());
+    onConfirm(paymentMethod, discountType, value, reason.trim(), notes.trim());
   };
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/35 p-4">
@@ -311,6 +325,20 @@ function SettlementDialog({
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold" htmlFor="invoice-notes">
+              Invoice notes
+            </label>
+            <textarea
+              id="invoice-notes"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              maxLength={1000}
+              rows={3}
+              placeholder="Optional notes for this invoice"
+              className="mt-1.5 w-full resize-y rounded-md border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary"
+            />
           </div>
           <label className="block text-xs font-bold">
             {discountType === "percentage"
@@ -1051,6 +1079,9 @@ function SessionDialog({
   const availableResources = resources.filter(
     (resource) => resource.status === "available",
   );
+  const selectedResource = availableResources.find(
+    (resource) => resource.id === selectedResourceId,
+  );
   useEffect(() => {
     if (!open) return;
     const requestedResource = availableResources.find(
@@ -1106,6 +1137,16 @@ function SessionDialog({
           </button>
         </div>
         <div className="mt-6 space-y-4">
+          {selectedResource ? (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                Selected resource
+              </div>
+              <div className="mt-1 text-sm font-extrabold">
+                {selectedResource.name} ({money(selectedResource.hourlyRate)}/hr)
+              </div>
+            </div>
+          ) : (
           <label className="block text-xs font-bold">
             Resource
             <select
@@ -1114,15 +1155,14 @@ function SessionDialog({
               onChange={(e) => setResourceId(e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm"
             >
-              {resources
-                .filter((r) => r.status === "available")
-                .map((r) => (
+              {availableResources.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name} · {money(r.hourlyRate)}/hr
                   </option>
                 ))}
             </select>
           </label>
+          )}
           <div>
             <div className="mb-1.5 text-xs font-bold">Session mode</div>
             <div className="grid grid-cols-2 gap-2">
@@ -1943,6 +1983,7 @@ function LiveSessionBillDialog({
     discountType: "amount" | "percentage" = "amount",
     discountValue = 0,
     discountReason = "",
+    notes = "",
   ) =>
     updateSession.mutate(
       {
@@ -1953,6 +1994,7 @@ function LiveSessionBillDialog({
           discountType,
           discountValue,
           discountReason,
+          notes,
         },
       } as any,
       {
@@ -2303,6 +2345,109 @@ function LiveSessionBillDialog({
   );
 }
 
+function CompletedSessionInvoiceDialog({
+  session,
+  onClose,
+}: {
+  session: any;
+  onClose: () => void;
+}) {
+  const invoiceTotal = Math.max(
+    0,
+    (session.subtotal ?? session.grandTotal ?? 0) - (session.discountAmount ?? 0),
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/35 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="completed-session-invoice-title"
+        className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card shadow-2xl fade-up"
+      >
+        <div className="flex items-start justify-between border-b border-border p-5">
+          <div>
+            <div className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              Paid invoice - Session #{session.id}
+            </div>
+            <h2 id="completed-session-invoice-title" className="mt-1 text-xl font-extrabold">
+              {session.resourceName} bill
+            </h2>
+          </div>
+          <button
+            aria-label="Close invoice"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="max-h-[70vh] space-y-3 overflow-y-auto p-5 text-xs">
+          <div className="rounded-md border border-border bg-muted/35 p-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Started</span>
+              <span>{dateLabel(session.startedAt)} {timeLabel(session.startedAt)}</span>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <span className="text-muted-foreground">Paid by</span>
+              <span className="font-bold">{session.completedBy ?? "System"}</span>
+            </div>
+            <div className="mt-1 flex justify-between">
+              <span className="text-muted-foreground">Payment</span>
+              <span className="font-bold capitalize">{session.paymentMethod ?? session.paymentStatus ?? "Settled"}</span>
+            </div>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Playing time</span>
+            <span>{secondsLabel(session.elapsedSeconds)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Play rate</span>
+            <span>{money(session.hourlyRate)}/hr</span>
+          </div>
+          <div className="flex justify-between font-bold">
+            <span>Play total</span>
+            <span>{money(session.total)}</span>
+          </div>
+          <div className="border-t border-border pt-3 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Cafeteria
+          </div>
+          {(session.cafeteriaOrders ?? [])
+            .flatMap((order: any) => order.items)
+            .map((item: any, index: number) => (
+              <div key={`${item.productId}-${index}`} className="flex justify-between">
+                <span>{item.quantity} x {item.productName}</span>
+                <span>{money(item.lineTotal)}</span>
+              </div>
+            ))}
+          {session.cafeteriaTotal === 0 && (
+            <div className="text-muted-foreground">No cafeteria items.</div>
+          )}
+          <div className="flex justify-between font-bold">
+            <span>Cafeteria total</span>
+            <span>{money(session.cafeteriaTotal)}</span>
+          </div>
+          {(session.discountAmount ?? 0) > 0 && (
+            <div className="flex justify-between text-destructive">
+              <span>Discount</span>
+              <span>-{money(session.discountAmount)}</span>
+            </div>
+          )}
+          {session.notes && (
+            <div className="rounded-md bg-muted p-3 text-xs">
+              <span className="font-bold">Invoice notes: </span>
+              {session.notes}
+            </div>
+          )}
+          <div className="flex justify-between border-t border-border pt-3 text-sm font-extrabold">
+            <span>Invoice total</span>
+            <span>{money(invoiceTotal)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SessionsPage() {
   const [filter, setFilter] = useState<"active" | "completed">("active");
   const { data: resources = [] } = useListResources({
@@ -2328,6 +2473,7 @@ function SessionsPage() {
   const update = useUpdateSession();
   const client = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [completedInvoice, setCompletedInvoice] = useState<any | null>(null);
   const stop = (id: number, paymentMethod: "cash" | "cliq") =>
     update.mutate(
       { id, data: { action: "stop", paymentMethod } },
@@ -2351,6 +2497,8 @@ function SessionsPage() {
     ) {
       setBillSession(session);
       setBillAllowsSettlement(allowSettlement);
+    } else if (session.status === "completed") {
+      setCompletedInvoice(session);
     }
   };
   const setSettlingId = (id: number | null) => {
@@ -2428,22 +2576,21 @@ function SessionsPage() {
                     <tr
                       key={session.id}
                       data-testid={`row-session-${session.id}`}
-                      role={isOpen ? "button" : undefined}
-                      tabIndex={isOpen ? 0 : undefined}
+                      role="button"
+                      tabIndex={0}
                       onClick={(event) => {
                         if (!(event.target as HTMLElement).closest("button"))
                           openSessionBill(session, true);
                       }}
                       onKeyDown={(event) => {
                         if (
-                          isOpen &&
-                          (event.key === "Enter" || event.key === " ")
+                          event.key === "Enter" || event.key === " "
                         ) {
                           event.preventDefault();
                           openSessionBill(session, true);
                         }
                       }}
-                      className={`text-sm hover:bg-muted/35 ${isOpen ? "cursor-pointer" : ""}`}
+                      className="cursor-pointer text-sm hover:bg-muted/35"
                     >
                       <td className="px-5 py-3.5">
                         <div className="font-extrabold">
@@ -2491,9 +2638,13 @@ function SessionsPage() {
                             Session details
                           </button>
                         ) : (
-                          <span className="text-[11px] text-muted-foreground">
-                            {session.paymentStatus ?? "settled"}
-                          </span>
+                          <button
+                            data-testid={`button-view-invoice-${session.id}`}
+                            onClick={() => setCompletedInvoice(session)}
+                            className="rounded-md border border-border px-2.5 py-1.5 text-[11px] font-bold hover:border-primary hover:text-primary"
+                          >
+                            View invoice
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -2519,6 +2670,12 @@ function SessionsPage() {
             setBillAllowsSettlement(false);
           }}
           onUpdated={setBillSession}
+        />
+      )}
+      {completedInvoice && (
+        <CompletedSessionInvoiceDialog
+          session={completedInvoice}
+          onClose={() => setCompletedInvoice(null)}
         />
       )}
     </>
@@ -3037,16 +3194,18 @@ function InvoicesPage() {
     { query: { queryKey: getListOrdersQueryKey() } },
   );
   const period = useMemo(() => {
-    const end = new Date(`${selectedDate}T23:59:59`);
-    const start = new Date(`${selectedDate}T00:00:00`);
-    if (range === "weekly") start.setDate(end.getDate() - 6);
+    const end = new Date(`${selectedDate}T00:00:00`);
+    const start = new Date(end);
+    if (range === "weekly") start.setDate(start.getDate() - 6);
     if (range === "monthly") start.setDate(1);
-    start.setHours(0, 0, 0, 0);
-    return { start, end };
+    return {
+      start: dateKey(start),
+      end: dateKey(end),
+    };
   }, [range, selectedDate]);
   const isInPeriod = (value: string) => {
-    const date = new Date(value);
-    return date >= period.start && date <= period.end;
+    const date = reportDateFor(value);
+    return date !== null && date >= period.start && date <= period.end;
   };
   const allInvoices = [
     ...sessions
@@ -3135,7 +3294,7 @@ function InvoicesPage() {
           </button>
         ))}
         <input
-          aria-label="Invoice date"
+          aria-label="Report date"
           type="date"
           value={selectedDate}
           onChange={(event) => {
@@ -3355,6 +3514,12 @@ function InvoicesPage() {
                   </div>
                 </>
               )}
+              {selected.notes && (
+                <div className="rounded-md bg-muted p-3 text-xs">
+                  <span className="font-bold">Invoice notes: </span>
+                  {selected.notes}
+                </div>
+              )}
               <div className="flex justify-between border-t border-border pt-3 text-sm font-extrabold">
                 <span>Invoice total</span>
                 <span>{money(selected.invoiceTotal)}</span>
@@ -3380,6 +3545,8 @@ function CounterCafeteriaPage() {
   const payOrder = usePayOrder();
   const [cart, setCart] = useState<Record<number, number>>({});
   const [orderName, setOrderName] = useState("");
+  const [orderNotes, setOrderNotes] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [productForm, setProductForm] = useState({
     name: "",
@@ -3389,6 +3556,19 @@ function CounterCafeteriaPage() {
   const [productError, setProductError] = useState("");
   const [settlingOrder, setSettlingOrder] = useState<any | null>(null);
   const activeProducts = products.filter((product: any) => product.isActive);
+  const categories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          activeProducts.map((product: any) => String(product.category ?? "Other")),
+        ),
+      ).sort(),
+    [activeProducts],
+  );
+  const visibleProducts = activeProducts.filter(
+    (product: any) =>
+      categoryFilter === "all" || product.category === categoryFilter,
+  );
   const change = (id: number, delta: number) =>
     setCart((current) => {
       const quantity = Math.max(0, (current[id] ?? 0) + delta);
@@ -3410,11 +3590,12 @@ function CounterCafeteriaPage() {
     }));
     if (!items.length || !orderName.trim()) return;
     createOrder.mutate(
-      { data: { name: orderName.trim(), items } },
+      { data: { name: orderName.trim(), notes: orderNotes.trim(), items } },
       {
         onSuccess: () => {
           setCart({});
           setOrderName("");
+          setOrderNotes("");
           client.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           client.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
         },
@@ -3427,11 +3608,12 @@ function CounterCafeteriaPage() {
     discountType: "amount" | "percentage" = "amount",
     discountValue = 0,
     discountReason = "",
+    notes = "",
   ) =>
     payOrder.mutate(
       {
         id,
-        data: { paymentMethod, discountType, discountValue, discountReason },
+        data: { paymentMethod, discountType, discountValue, discountReason, notes },
       } as any,
       {
         onSuccess: () => {
@@ -3507,8 +3689,27 @@ function CounterCafeteriaPage() {
               {activeProducts.length} active items
             </span>
           </div>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              aria-pressed={categoryFilter === "all"}
+              onClick={() => setCategoryFilter("all")}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold ${categoryFilter === "all" ? "bg-primary text-primary-foreground" : "border border-border bg-card text-muted-foreground hover:text-foreground"}`}
+            >
+              All
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category}
+                aria-pressed={categoryFilter === category}
+                onClick={() => setCategoryFilter(category)}
+                className={`rounded-full px-3 py-1.5 text-xs font-bold ${categoryFilter === category ? "bg-primary text-primary-foreground" : "border border-border bg-card text-muted-foreground hover:text-foreground"}`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {activeProducts.map((product: any) => {
+            {visibleProducts.map((product: any) => {
               const quantity = cart[product.id] ?? 0;
               return (
                 <div
@@ -3575,6 +3776,17 @@ function CounterCafeteriaPage() {
               className="mt-1.5 w-full rounded-md border border-primary-foreground/25 bg-primary-foreground/10 px-3 py-2 text-sm text-primary-foreground outline-none placeholder:text-primary-foreground/45"
             />
           </label>
+          <label className="mt-3 block text-[10px] font-bold uppercase tracking-[0.12em] text-primary-foreground/70">
+            Invoice notes
+            <textarea
+              value={orderNotes}
+              onChange={(event) => setOrderNotes(event.target.value)}
+              maxLength={1000}
+              rows={2}
+              placeholder="Optional"
+              className="mt-1.5 w-full resize-y rounded-md border border-primary-foreground/25 bg-primary-foreground/10 px-3 py-2 text-sm text-primary-foreground outline-none placeholder:text-primary-foreground/45"
+            />
+          </label>
           <div className="mt-5 min-h-[82px] space-y-2">
             {activeProducts
               .filter((product: any) => cart[product.id])
@@ -3601,7 +3813,7 @@ function CounterCafeteriaPage() {
           <button
             disabled={!total || !orderName.trim() || createOrder.isPending}
             onClick={save}
-            className="mt-4 flex w-full items-center justify-center rounded-lg bg-accent py-2.5 text-xs font-extrabold text-primary disabled:opacity-40"
+            className="mt-4 flex w-full items-center justify-center rounded-lg bg-white py-2.5 text-xs font-extrabold text-primary shadow-sm transition hover:bg-primary-foreground/90 disabled:bg-primary-foreground/35 disabled:text-primary-foreground/60 disabled:opacity-100"
           >
             Save open order <ChevronRight size={15} />
           </button>
@@ -3665,13 +3877,14 @@ function CounterCafeteriaPage() {
           }}
           saving={payOrder.isPending}
           onClose={() => setSettlingOrder(null)}
-          onConfirm={(paymentMethod, discountType, discountValue, discountReason) =>
+          onConfirm={(paymentMethod, discountType, discountValue, discountReason, notes) =>
             pay(
               settlingOrder.id,
               paymentMethod,
               discountType,
               discountValue,
               discountReason,
+              notes,
             )
           }
         />
@@ -3797,7 +4010,7 @@ function ReportsPage() {
       <PageHeading
         eyebrow="Reporting / reconciliation"
         title="Reports"
-        description="A clear read on club revenue and payments."
+        description="Each report date covers 4:00 PM through 12:00 PM the following day."
         action={
           <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-1.5">
             <CalendarDays size={15} className="ml-2 text-muted-foreground" />
@@ -3866,7 +4079,7 @@ function ReportsPage() {
                 <table className="w-full min-w-[620px] text-left text-xs">
                   <thead className="bg-muted/50 text-[10px] uppercase tracking-[0.13em] text-muted-foreground">
                     <tr>
-                      <th className="px-5 py-3">Date</th>
+                      <th className="px-5 py-3">Report date</th>
                       <th className="px-4 py-3 text-right">Cash</th>
                       <th className="px-4 py-3 text-right">CliQ</th>
                       <th className="px-4 py-3 text-right">Discounts</th>

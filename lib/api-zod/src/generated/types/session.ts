@@ -40,6 +40,8 @@ export interface Session {
   discountType?: SessionDiscountType;
   discountValue?: number;
   discountReason?: string;
+  /** @maxLength 1000 */
+  notes?: string;
   grandTotal: number;
   cafeteriaOrderCount: number;
   cafeteriaOrders: Order[];

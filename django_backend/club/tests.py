@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
@@ -7,8 +7,8 @@ from django.test import override_settings
 
 from django.contrib.auth.models import User
 
-from .models import PlayingSession, Resource
-from .views import invoice_discount
+from .models import Order, PlayingSession, Resource
+from .views import invoice_discount, paid_sales, report_date_for
 
 
 class InvoiceDiscountTests(TestCase):
@@ -59,6 +59,34 @@ class PlayingSessionBillingTests(TestCase):
                 session = self.session_for_duration(elapsed_seconds)
                 self.assertEqual(session.billed_seconds, billed_seconds)
                 self.assertEqual(session.total, total)
+
+
+class ReportDayTests(TestCase):
+    def aware(self, day, clock):
+        return timezone.make_aware(datetime.combine(day, clock))
+
+    def test_report_date_uses_4pm_to_next_day_noon(self):
+        day = timezone.localdate()
+        self.assertEqual(report_date_for(self.aware(day, time(16))), day)
+        self.assertEqual(report_date_for(self.aware(day + timedelta(days=1), time(11, 59))), day)
+        self.assertIsNone(report_date_for(self.aware(day + timedelta(days=1), time(12))))
+        self.assertIsNone(report_date_for(self.aware(day, time(15, 59))))
+
+    def test_paid_sales_excludes_the_noon_to_4pm_gap(self):
+        day = timezone.localdate()
+        resource = Resource.objects.create(name="Report Table", kind="snooker", hourly_rate=Decimal("10"))
+        session = PlayingSession.objects.create(
+            resource=resource, mode="open", status="completed", payment_status="paid", payment_method="cash"
+        )
+        PlayingSession.objects.filter(pk=session.pk).update(ended_at=self.aware(day, time(16)))
+        included_order = Order.objects.create(status="paid", payment_method="cash")
+        excluded_order = Order.objects.create(status="paid", payment_method="cash")
+        Order.objects.filter(pk=included_order.pk).update(created_at=self.aware(day + timedelta(days=1), time(11, 59)))
+        Order.objects.filter(pk=excluded_order.pk).update(created_at=self.aware(day + timedelta(days=1), time(12)))
+
+        sessions, orders = paid_sales(day, day)
+        self.assertEqual(list(sessions), [session])
+        self.assertEqual(list(orders), [included_order])
 
 
 @override_settings(CLUB_INITIAL_PASSWORD="InitialPass123!", CLUB_PASSWORD_RESET_CODE="recovery-code")

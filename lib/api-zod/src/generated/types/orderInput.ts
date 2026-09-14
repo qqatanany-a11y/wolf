@@ -10,6 +10,8 @@ import type { OrderItemInput } from './orderItemInput';
 export interface OrderInput {
   /** @maxLength 120 */
   name?: string;
+  /** @maxLength 1000 */
+  notes?: string;
   /** @nullable */
   sessionId?: number | null;
   /** @minItems 1 */

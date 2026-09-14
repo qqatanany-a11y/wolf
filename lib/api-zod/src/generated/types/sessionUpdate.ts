@@ -23,4 +23,6 @@ export interface SessionUpdate {
   discountValue?: number;
   /** @maxLength 250 */
   discountReason?: string;
+  /** @maxLength 1000 */
+  notes?: string;
 }

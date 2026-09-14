@@ -23,6 +23,8 @@ export interface Order {
   discountType?: OrderDiscountType;
   discountValue?: number;
   discountReason?: string;
+  /** @maxLength 1000 */
+  notes?: string;
   /** @nullable */
   sessionId?: number | null;
   createdAt: Date;

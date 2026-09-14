@@ -106,6 +106,10 @@ export const ListSessionsQueryParams = zod.object({
   "date": zod.date().optional()
 })
 
+export const listSessionsResponseNotesMax = 1000;
+
+
+export const listSessionsResponseCafeteriaOrdersItemNotesMax = 1000;
 
 
 
@@ -131,6 +135,7 @@ export const ListSessionsResponseItem = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(listSessionsResponseNotesMax).optional(),
   "grandTotal": zod.number(),
   "cafeteriaOrderCount": zod.number().int(),
   "cafeteriaOrders": zod.array(zod.object({
@@ -151,6 +156,7 @@ export const ListSessionsResponseItem = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(listSessionsResponseCafeteriaOrdersItemNotesMax).optional(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date(),
   "createdBy": zod.string().optional(),
@@ -176,6 +182,10 @@ export const CreateSessionBody = zod.object({
   "durationMinutes": zod.number().int().min(1).nullish()
 })
 
+export const createSessionResponseNotesMax = 1000;
+
+
+export const createSessionResponseCafeteriaOrdersItemNotesMax = 1000;
 
 
 
@@ -201,6 +211,7 @@ export const CreateSessionResponse = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(createSessionResponseNotesMax).optional(),
   "grandTotal": zod.number(),
   "cafeteriaOrderCount": zod.number().int(),
   "cafeteriaOrders": zod.array(zod.object({
@@ -221,6 +232,7 @@ export const CreateSessionResponse = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(createSessionResponseCafeteriaOrdersItemNotesMax).optional(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date(),
   "createdBy": zod.string().optional(),
@@ -246,6 +258,8 @@ export const updateSessionBodyDiscountValueMin = 0;
 
 export const updateSessionBodyDiscountReasonMax = 250;
 
+export const updateSessionBodyNotesMax = 1000;
+
 
 
 export const UpdateSessionBody = zod.object({
@@ -254,9 +268,14 @@ export const UpdateSessionBody = zod.object({
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
   "discountType": zod.enum(['amount', 'percentage']).default(updateSessionBodyDiscountTypeDefault),
   "discountValue": zod.number().min(updateSessionBodyDiscountValueMin).optional(),
-  "discountReason": zod.string().max(updateSessionBodyDiscountReasonMax).optional()
+  "discountReason": zod.string().max(updateSessionBodyDiscountReasonMax).optional(),
+  "notes": zod.string().max(updateSessionBodyNotesMax).optional()
 })
 
+export const updateSessionResponseNotesMax = 1000;
+
+
+export const updateSessionResponseCafeteriaOrdersItemNotesMax = 1000;
 
 
 
@@ -282,6 +301,7 @@ export const UpdateSessionResponse = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(updateSessionResponseNotesMax).optional(),
   "grandTotal": zod.number(),
   "cafeteriaOrderCount": zod.number().int(),
   "cafeteriaOrders": zod.array(zod.object({
@@ -302,6 +322,7 @@ export const UpdateSessionResponse = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(updateSessionResponseCafeteriaOrdersItemNotesMax).optional(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date(),
   "createdBy": zod.string().optional(),
@@ -362,6 +383,8 @@ export const ListOrdersQueryParams = zod.object({
 })
 
 
+export const listOrdersResponseNotesMax = 1000;
+
 
 
 export const ListOrdersResponseItem = zod.object({
@@ -382,6 +405,7 @@ export const ListOrdersResponseItem = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(listOrdersResponseNotesMax).optional(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date(),
   "createdBy": zod.string().optional(),
@@ -395,12 +419,15 @@ export const ListOrdersResponse = zod.array(ListOrdersResponseItem)
  */
 export const createOrderBodyNameMax = 120;
 
+export const createOrderBodyNotesMax = 1000;
+
 
 
 
 
 export const CreateOrderBody = zod.object({
   "name": zod.string().max(createOrderBodyNameMax).optional(),
+  "notes": zod.string().max(createOrderBodyNotesMax).optional(),
   "sessionId": zod.number().int().nullish(),
   "items": zod.array(zod.object({
   "productId": zod.number().int(),
@@ -408,6 +435,8 @@ export const CreateOrderBody = zod.object({
 })).min(1)
 })
 
+
+export const createOrderResponseNotesMax = 1000;
 
 
 
@@ -429,6 +458,7 @@ export const CreateOrderResponse = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(createOrderResponseNotesMax).optional(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date(),
   "createdBy": zod.string().optional(),
@@ -448,15 +478,20 @@ export const payOrderBodyDiscountValueMin = 0;
 
 export const payOrderBodyDiscountReasonMax = 250;
 
+export const payOrderBodyNotesMax = 1000;
+
 
 
 export const PayOrderBody = zod.object({
   "paymentMethod": zod.enum(['cash', 'cliq']),
   "discountType": zod.enum(['amount', 'percentage']).default(payOrderBodyDiscountTypeDefault),
   "discountValue": zod.number().min(payOrderBodyDiscountValueMin).optional(),
-  "discountReason": zod.string().max(payOrderBodyDiscountReasonMax).optional()
+  "discountReason": zod.string().max(payOrderBodyDiscountReasonMax).optional(),
+  "notes": zod.string().max(payOrderBodyNotesMax).optional()
 })
 
+
+export const payOrderResponseNotesMax = 1000;
 
 
 
@@ -478,6 +513,7 @@ export const PayOrderResponse = zod.object({
   "discountType": zod.enum(['amount', 'percentage']).optional(),
   "discountValue": zod.number().optional(),
   "discountReason": zod.string().optional(),
+  "notes": zod.string().max(payOrderResponseNotesMax).optional(),
   "sessionId": zod.number().int().nullish(),
   "createdAt": zod.coerce.date(),
   "createdBy": zod.string().optional(),

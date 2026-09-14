@@ -340,6 +340,7 @@ components:
           enum: [amount, percentage]
         discountValue: { type: number }
         discountReason: { type: string }
+        notes: { type: string, maxLength: 1000 }
         grandTotal: { type: number }
         cafeteriaOrderCount: { type: integer }
         cafeteriaOrders:
@@ -383,6 +384,9 @@ components:
         discountReason:
           type: string
           maxLength: 250
+        notes:
+          type: string
+          maxLength: 1000
     Product:
       type: object
       required: [id, name, category, price, isActive]
@@ -423,6 +427,7 @@ components:
           enum: [amount, percentage]
         discountValue: { type: number }
         discountReason: { type: string }
+        notes: { type: string, maxLength: 1000 }
         sessionId: { type: ["integer", "null"] }
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
@@ -441,6 +446,7 @@ components:
       required: [items]
       properties:
         name: { type: string, maxLength: 120 }
+        notes: { type: string, maxLength: 1000 }
         sessionId: { type: ["integer", "null"] }
         items:
           type: array
@@ -470,6 +476,9 @@ components:
         discountReason:
           type: string
           maxLength: 250
+        notes:
+          type: string
+          maxLength: 1000
     Dashboard:
       type: object
       required: [date, resources, revenue, activeSessions, openOrders, paymentMix, recentActivity]

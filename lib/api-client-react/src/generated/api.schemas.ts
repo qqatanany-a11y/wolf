@@ -151,6 +151,8 @@ export interface Order {
   discountType?: OrderDiscountType;
   discountValue?: number;
   discountReason?: string;
+  /** @maxLength 1000 */
+  notes?: string;
   /** @nullable */
   sessionId?: number | null;
   createdAt: string;
@@ -185,6 +187,8 @@ export interface Session {
   discountType?: SessionDiscountType;
   discountValue?: number;
   discountReason?: string;
+  /** @maxLength 1000 */
+  notes?: string;
   grandTotal: number;
   cafeteriaOrderCount: number;
   cafeteriaOrders: Order[];
@@ -256,6 +260,8 @@ export interface SessionUpdate {
   discountValue?: number;
   /** @maxLength 250 */
   discountReason?: string;
+  /** @maxLength 1000 */
+  notes?: string;
 }
 
 export interface Product {
@@ -284,6 +290,8 @@ export interface OrderItemInput {
 export interface OrderInput {
   /** @maxLength 120 */
   name?: string;
+  /** @maxLength 1000 */
+  notes?: string;
   /** @nullable */
   sessionId?: number | null;
   /** @minItems 1 */
@@ -313,6 +321,8 @@ export interface PaymentInput {
   discountValue?: number;
   /** @maxLength 250 */
   discountReason?: string;
+  /** @maxLength 1000 */
+  notes?: string;
 }
 
 export type DashboardPaymentMix = {

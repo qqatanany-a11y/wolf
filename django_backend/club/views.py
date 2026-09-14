@@ -17,6 +17,8 @@ from .models import AccountSecurity, AuditLog, Order, Product, Resource, Playing
 from .models_order_items import OrderItem
 
 MONEY = Decimal("0.01")
+REPORT_START_TIME = time(16, 0)
+REPORT_END_TIME = time(12, 0)
 CLUB_USERNAMES = {"mazen", "ahmed", "yazan"}
 RESTRICTED_USERNAME = "yazan"
 SUPER_ADMIN_USERNAMES = CLUB_USERNAMES - {RESTRICTED_USERNAME}
@@ -28,6 +30,36 @@ def is_super_admin(user):
 
 def money(value):
     return float(Decimal(value).quantize(MONEY, rounding=ROUND_HALF_UP))
+
+
+def report_day_bounds(report_date):
+    """Return the [4 PM, next-day noon) reporting interval for a date."""
+    start = timezone.make_aware(datetime.combine(report_date, REPORT_START_TIME))
+    end = timezone.make_aware(datetime.combine(report_date + timedelta(days=1), REPORT_END_TIME))
+    return start, end
+
+
+def report_date_for(value):
+    """Map a timestamp to its report date, or None during the noon-to-4-PM gap."""
+    local_value = timezone.localtime(value)
+    local_time = local_value.timetz().replace(tzinfo=None)
+    if local_time >= REPORT_START_TIME:
+        return local_value.date()
+    if local_time < REPORT_END_TIME:
+        return local_value.date() - timedelta(days=1)
+    return None
+
+
+def current_report_date():
+    """Use the most recently started report day outside active reporting hours."""
+    return report_date_for(timezone.now()) or (timezone.localdate() - timedelta(days=1))
+
+
+def invoice_notes(data, fallback=""):
+    notes = str(data.get("notes", fallback)).strip()
+    if len(notes) > 1000:
+        raise ValueError("Invoice notes must be 1,000 characters or fewer")
+    return notes
 
 
 def invoice_discount(data, invoice_total):
@@ -220,6 +252,7 @@ def session_json(session):
         "discountType": session.discount_type,
         "discountValue": money(session.discount_value),
         "discountReason": session.discount_reason,
+        "notes": session.notes,
         "grandTotal": money(subtotal - session.discount_amount),
         "cafeteriaOrderCount": len(cafeteria_orders),
         "cafeteriaOrders": [order_json(order) for order in cafeteria_orders],
@@ -289,6 +322,7 @@ def order_json(order):
         "discountType": order.discount_type,
         "discountValue": money(order.discount_value),
         "discountReason": order.discount_reason,
+        "notes": order.notes,
         "total": money(subtotal - order.discount_amount),
         "paymentMethod": order.payment_method,
         "sessionId": order.session_id,
@@ -369,7 +403,12 @@ def sessions(request):
             query = query.filter(ended_at__isnull=False)
         date_filter = request.GET.get("date")
         if date_filter:
-            query = query.filter(started_at__date=date_filter)
+            try:
+                start, end = report_day_bounds(datetime.strptime(date_filter, "%Y-%m-%d").date())
+            except ValueError:
+                return error("date must be in YYYY-MM-DD format")
+            timestamp_field = "ended_at" if status == "completed" else "started_at"
+            query = query.filter(**{f"{timestamp_field}__gte": start, f"{timestamp_field}__lt": end})
         return JsonResponse([session_json(item) for item in query[:200]], safe=False)
 
     if request.method != "POST":
@@ -466,6 +505,7 @@ def session_detail(request, session_id):
             session_total = session.total + sum((order.subtotal for order in session.orders.all()), Decimal("0.00"))
             try:
                 discount_amount, discount_type, discount_value, discount_reason = invoice_discount(data, session_total)
+                notes = invoice_notes(data)
             except ValueError as exc:
                 return error(str(exc))
             session.ended_at = timezone.now()
@@ -476,8 +516,9 @@ def session_detail(request, session_id):
             session.discount_type = discount_type
             session.discount_value = discount_value
             session.discount_reason = discount_reason
+            session.notes = notes
             session.completed_by = request.user
-            session.save(update_fields=["started_at", "ends_at", "paused_at", "ended_at", "status", "payment_status", "payment_method", "discount_amount", "discount_type", "discount_value", "discount_reason", "completed_by"])
+            session.save(update_fields=["started_at", "ends_at", "paused_at", "ended_at", "status", "payment_status", "payment_method", "discount_amount", "discount_type", "discount_value", "discount_reason", "notes", "completed_by"])
             session.orders.filter(status="open").update(
                 status="paid", payment_method=payment_method, paid_by=request.user
             )
@@ -601,7 +642,11 @@ def orders(request):
             query = query.filter(status=status)
         date_filter = request.GET.get("date")
         if date_filter:
-            query = query.filter(created_at__date=date_filter)
+            try:
+                start, end = report_day_bounds(datetime.strptime(date_filter, "%Y-%m-%d").date())
+            except ValueError:
+                return error("date must be in YYYY-MM-DD format")
+            query = query.filter(created_at__gte=start, created_at__lt=end)
         return JsonResponse([order_json(item) for item in query[:200]], safe=False)
     if request.method != "POST":
         return error("Method not allowed", 405)
@@ -618,6 +663,7 @@ def orders(request):
             order = Order.objects.create(
                 session=session,
                 name=str(data.get("name", "")).strip(),
+                notes=invoice_notes(data),
                 created_by=request.user,
             )
             for item in items:
@@ -651,6 +697,7 @@ def pay_order(request, order_id):
         return error("Choose cash or CliQ")
     try:
         discount_amount, discount_type, discount_value, discount_reason = invoice_discount(data, order.subtotal)
+        notes = invoice_notes(data, order.notes)
     except ValueError as exc:
         return error(str(exc))
     order.status = "paid"
@@ -660,7 +707,8 @@ def pay_order(request, order_id):
     order.discount_type = discount_type
     order.discount_value = discount_value
     order.discount_reason = discount_reason
-    order.save(update_fields=["status", "payment_method", "discount_amount", "discount_type", "discount_value", "discount_reason", "paid_by"])
+    order.notes = notes
+    order.save(update_fields=["status", "payment_method", "discount_amount", "discount_type", "discount_value", "discount_reason", "notes", "paid_by"])
     audit(request, "Paid order", f"{order.name or f'Order #{order.id}'} (discount {money(discount_amount)})")
     return JsonResponse(order_json(order))
 
@@ -717,21 +765,23 @@ def order_items(request, order_id):
 
 
 def paid_sales(from_date, to_date):
+    start, _ = report_day_bounds(from_date)
+    _, end = report_day_bounds(to_date)
     sessions_query = PlayingSession.objects.select_related("resource", "created_by", "completed_by").filter(
         status="completed",
         payment_status="paid",
-        ended_at__date__gte=from_date,
-        ended_at__date__lte=to_date,
+        ended_at__gte=start,
+        ended_at__lt=end,
     )
     orders_query = Order.objects.select_related("created_by", "paid_by").prefetch_related("items__product").filter(
-        status="paid", session__isnull=True, created_at__date__gte=from_date, created_at__date__lte=to_date
+        status="paid", session__isnull=True, created_at__gte=start, created_at__lt=end
     )
     return sessions_query, orders_query
 
 
 def dashboard(request):
     refresh_overdue()
-    today = timezone.localdate()
+    today = current_report_date()
     sessions_query, orders_query = paid_sales(today, today)
     gross_session_revenue = sum((item.total for item in sessions_query), Decimal("0.00"))
     gross_cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
@@ -812,14 +862,14 @@ def profit_report(request):
     for item in sessions_query:
         net_amount = item.total - item.discount_amount
         payment_totals[item.payment_method] += net_amount
-        day = item.ended_at.date().isoformat()
+        day = report_date_for(item.ended_at).isoformat()
         by_day[day]["revenue"] += net_amount
         by_day[day][item.payment_method] += net_amount
         by_day[day]["discounts"] += item.discount_amount
     for item in orders_query:
         net_amount = item.subtotal - item.discount_amount
         payment_totals[item.payment_method] += net_amount
-        day = item.created_at.date().isoformat()
+        day = report_date_for(item.created_at).isoformat()
         by_day[day]["revenue"] += net_amount
         by_day[day][item.payment_method] += net_amount
         by_day[day]["discounts"] += item.discount_amount

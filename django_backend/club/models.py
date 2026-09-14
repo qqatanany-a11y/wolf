@@ -68,6 +68,7 @@ class PlayingSession(models.Model):
     )
     discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     discount_reason = models.CharField(max_length=250, blank=True)
+    notes = models.TextField(blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="created_playing_sessions",
@@ -130,6 +131,7 @@ class Order(models.Model):
     )
     discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     discount_reason = models.CharField(max_length=250, blank=True)
+    notes = models.TextField(blank=True)
     session = models.ForeignKey(
         PlayingSession,
         on_delete=models.PROTECT,
