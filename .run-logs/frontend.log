@@ -5,3 +5,5 @@
   ➜  Network: http://192.168.1.12:5173/
   ➜  press h + enter to show help
 2:26:29 PM [vite] (client) hmr update /src/App.tsx, /src/index.css
+4:22:48 PM [vite] vite.config.ts changed, restarting server...
+4:22:48 PM [vite] server restarted.
