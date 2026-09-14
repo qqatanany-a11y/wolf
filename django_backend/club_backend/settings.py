@@ -66,10 +66,20 @@ TIME_ZONE = "Asia/Amman"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
-FRONTEND_DIST = BASE_DIR.parent / "artifacts" / "club-operations" / "dist" / "public"
-FRONTEND_INDEX = FRONTEND_DIST / "index.html"
+FRONTEND_DIST = os.path.abspath(
+    os.path.join(
+        BASE_DIR,
+        "..",
+        "artifacts",
+        "club-operations",
+        "dist",
+        "public",
+    )
+)
+FRONTEND_INDEX = Path(FRONTEND_DIST) / "index.html"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_DIRS = [FRONTEND_DIST] if FRONTEND_DIST.exists() else []
+STATICFILES_DIRS = [FRONTEND_DIST]
+WHITENOISE_ROOT = FRONTEND_DIST
 STORAGES = {
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
