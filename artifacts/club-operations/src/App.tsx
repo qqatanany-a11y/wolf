@@ -102,6 +102,17 @@ const today = () => {
   const date = new Date();
   return dateKey(date);
 };
+const cafeteriaCategoryOrder = [
+  "cold drinks",
+  "hot drinks",
+  "snacks",
+  "shisha",
+  "extra",
+];
+const cafeteriaCategoryRank = (category: string) => {
+  const rank = cafeteriaCategoryOrder.indexOf(category.trim().toLowerCase());
+  return rank === -1 ? cafeteriaCategoryOrder.length : rank;
+};
 
 const reportDateFor = (value: string | Date | null | undefined) => {
   if (!value) return null;
@@ -231,6 +242,7 @@ function SettlementDialog({
   onClose,
   onConfirm,
   saving = false,
+  initialNotes = "",
 }: {
   invoice: { label: string; subtotal: number };
   onClose: () => void;
@@ -242,13 +254,14 @@ function SettlementDialog({
     notes: string,
   ) => void;
   saving?: boolean;
+  initialNotes?: string;
 }) {
   const [discountType, setDiscountType] = useState<"amount" | "percentage">(
     "amount",
   );
   const [discountValue, setDiscountValue] = useState("");
   const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialNotes);
   const [error, setError] = useState("");
   const value = discountValue.trim() === "" ? 0 : Number(discountValue);
   const amount =
@@ -1079,9 +1092,6 @@ function SessionDialog({
   const availableResources = resources.filter(
     (resource) => resource.status === "available",
   );
-  const selectedResource = availableResources.find(
-    (resource) => resource.id === selectedResourceId,
-  );
   useEffect(() => {
     if (!open) return;
     const requestedResource = availableResources.find(
@@ -1137,16 +1147,6 @@ function SessionDialog({
           </button>
         </div>
         <div className="mt-6 space-y-4">
-          {selectedResource ? (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-              <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                Selected resource
-              </div>
-              <div className="mt-1 text-sm font-extrabold">
-                {selectedResource.name} ({money(selectedResource.hourlyRate)}/hr)
-              </div>
-            </div>
-          ) : (
           <label className="block text-xs font-bold">
             Resource
             <select
@@ -1162,7 +1162,6 @@ function SessionDialog({
                 ))}
             </select>
           </label>
-          )}
           <div>
             <div className="mb-1.5 text-xs font-bold">Session mode</div>
             <div className="grid grid-cols-2 gap-2">
@@ -1293,7 +1292,7 @@ function Dashboard() {
               now={now}
               onStart={() =>
                 r.status === "available"
-                  ? setDialogOpen(true)
+                  ? openSessionDialog(r.id)
                   : setLocation("/sessions")
               }
             />
@@ -1936,6 +1935,7 @@ function LiveSessionBillDialog({
   const now = useCurrentTime();
   const [showPayment, setShowPayment] = useState(false);
   const [showDiscountDialog, setShowDiscountDialog] = useState(false);
+  const [invoiceNotes, setInvoiceNotes] = useState(session.notes ?? "");
   const [changingProduct, setChangingProduct] = useState<number | null>(null);
   const [actionStep, setActionStep] = useState<
     "choices" | "extend" | "details"
@@ -2177,6 +2177,7 @@ function LiveSessionBillDialog({
           subtotal: current.subtotal ?? current.grandTotal,
         }}
         saving={updateSession.isPending}
+        initialNotes={invoiceNotes}
         onClose={() => setShowDiscountDialog(false)}
         onConfirm={closeSession}
       />
@@ -2300,6 +2301,17 @@ function LiveSessionBillDialog({
                 <span>{money(current.grandTotal)}</span>
               </div>
             </div>
+            <label className="mt-5 block border-t border-border pt-4 text-xs font-bold">
+              Invoice notes <span className="font-normal text-muted-foreground">(optional)</span>
+              <textarea
+                value={invoiceNotes}
+                onChange={(event) => setInvoiceNotes(event.target.value)}
+                maxLength={1000}
+                rows={3}
+                placeholder="Add an optional note to this invoice"
+                className="mt-1.5 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm font-normal outline-none focus:border-primary"
+              />
+            </label>
             <div className="mt-5 border-t border-border pt-4">
               <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
                 Payment and close session
@@ -2308,14 +2320,14 @@ function LiveSessionBillDialog({
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     disabled={updateSession.isPending}
-                    onClick={() => closeSession("cash")}
+                    onClick={() => closeSession("cash", "amount", 0, "", invoiceNotes.trim())}
                     className="rounded-lg border border-border py-2.5 text-xs font-bold"
                   >
                     Cash
                   </button>
                   <button
                     disabled={updateSession.isPending}
-                    onClick={() => closeSession("cliq")}
+                    onClick={() => closeSession("cliq", "amount", 0, "", invoiceNotes.trim())}
                     className="rounded-lg bg-primary py-2.5 text-xs font-bold text-primary-foreground"
                   >
                     CliQ
@@ -3562,7 +3574,11 @@ function CounterCafeteriaPage() {
         new Set(
           activeProducts.map((product: any) => String(product.category ?? "Other")),
         ),
-      ).sort(),
+      ).sort((first, second) => {
+        const rankDifference =
+          cafeteriaCategoryRank(first) - cafeteriaCategoryRank(second);
+        return rankDifference || first.localeCompare(second);
+      }),
     [activeProducts],
   );
   const visibleProducts = activeProducts.filter(
