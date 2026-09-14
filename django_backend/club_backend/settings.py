@@ -6,6 +6,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SESSION_SECRET", "club-operations-development-key")
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = ["*"]
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+CSRF_TRUSTED_ORIGINS = [f"https://{railway_domain}"] if railway_domain else []
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -18,6 +21,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -62,6 +66,15 @@ TIME_ZONE = "Asia/Amman"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
+FRONTEND_DIST = BASE_DIR.parent / "artifacts" / "club-operations" / "dist" / "public"
+FRONTEND_INDEX = FRONTEND_DIST / "index.html"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [FRONTEND_DIST] if FRONTEND_DIST.exists() else []
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Set these in the deployment environment. The development defaults exist only
