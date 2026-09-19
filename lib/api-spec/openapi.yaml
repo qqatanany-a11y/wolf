@@ -332,6 +332,20 @@ components:
         remainingSeconds: { type: ["integer", "null"] }
         hourlyRate: { type: number }
         total: { type: number }
+        resourceUsages:
+          type: array
+          items:
+            type: object
+            required: [resourceId, resourceName, resourceKind, startedAt, elapsedSeconds, hourlyRate, total]
+            properties:
+              resourceId: { type: integer }
+              resourceName: { type: string }
+              resourceKind: { type: string, enum: [snooker, billiards, playstation] }
+              startedAt: { type: string, format: date-time }
+              endedAt: { type: ["string", "null"], format: date-time }
+              elapsedSeconds: { type: integer }
+              hourlyRate: { type: number }
+              total: { type: number }
         cafeteriaTotal: { type: number }
         subtotal: { type: number }
         discountAmount: { type: number }
@@ -369,7 +383,8 @@ components:
       properties:
         action:
           type: string
-          enum: [pause, resume, stop, extend]
+          enum: [pause, resume, stop, extend, change_resource]
+        resourceId: { type: integer }
         durationMinutes: { type: ["integer", "null"], minimum: 1 }
         paymentMethod:
           type: ["string", "null"]

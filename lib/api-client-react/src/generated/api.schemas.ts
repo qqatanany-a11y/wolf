@@ -75,6 +75,27 @@ export const SessionMode = {
   limited: 'limited',
 } as const;
 
+export type SessionResourceUsagesItemResourceKind = typeof SessionResourceUsagesItemResourceKind[keyof typeof SessionResourceUsagesItemResourceKind];
+
+
+export const SessionResourceUsagesItemResourceKind = {
+  snooker: 'snooker',
+  billiards: 'billiards',
+  playstation: 'playstation',
+} as const;
+
+export type SessionResourceUsagesItem = {
+  resourceId: number;
+  resourceName: string;
+  resourceKind: SessionResourceUsagesItemResourceKind;
+  startedAt: string;
+  /** @nullable */
+  endedAt?: string | null;
+  elapsedSeconds: number;
+  hourlyRate: number;
+  total: number;
+};
+
 export type SessionDiscountType = typeof SessionDiscountType[keyof typeof SessionDiscountType];
 
 
@@ -181,6 +202,7 @@ export interface Session {
   remainingSeconds?: number | null;
   hourlyRate: number;
   total: number;
+  resourceUsages?: SessionResourceUsagesItem[];
   cafeteriaTotal: number;
   subtotal?: number;
   discountAmount?: number;
@@ -225,6 +247,7 @@ export const SessionUpdateAction = {
   resume: 'resume',
   stop: 'stop',
   extend: 'extend',
+  change_resource: 'change_resource',
 } as const;
 
 /**
@@ -248,6 +271,7 @@ export const SessionUpdateDiscountType = {
 
 export interface SessionUpdate {
   action?: SessionUpdateAction;
+  resourceId?: number;
   /**
      * @minimum 1
      * @nullable

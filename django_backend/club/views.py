@@ -13,7 +13,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import AccountSecurity, AuditLog, Order, Product, Resource, PlayingSession
+from .models import AccountSecurity, AuditLog, Order, Product, Resource, PlayingSession, SessionResourceUsage
 from .models_order_items import OrderItem
 
 MONEY = Decimal("0.01")
@@ -230,6 +230,31 @@ def session_json(session):
     cafeteria_orders = list(session.orders.prefetch_related("items__product").all())
     cafeteria_total = sum((order.subtotal for order in cafeteria_orders), Decimal("0.00"))
     subtotal = session_total + cafeteria_total
+    usages = list(session.resource_usages.select_related("resource"))
+    usage_json = [
+        {
+            "resourceId": usage.resource_id,
+            "resourceName": usage.resource.name,
+            "resourceKind": usage.resource.kind,
+            "startedAt": usage.started_at.isoformat(),
+            "endedAt": usage.ended_at.isoformat() if usage.ended_at else None,
+            "elapsedSeconds": usage.elapsed_seconds,
+            "hourlyRate": money(usage.hourly_rate),
+            "total": money(usage.total),
+        }
+        for usage in usages
+    ]
+    if not usage_json:
+        usage_json = [{
+            "resourceId": session.resource_id,
+            "resourceName": session.resource.name,
+            "resourceKind": session.resource.kind,
+            "startedAt": session.started_at.isoformat(),
+            "endedAt": session.ended_at.isoformat() if session.ended_at else None,
+            "elapsedSeconds": elapsed,
+            "hourlyRate": money(session.resource.hourly_rate),
+            "total": money(session_total),
+        }]
     return {
         "id": session.id,
         "resourceId": session.resource_id,
@@ -246,6 +271,7 @@ def session_json(session):
         "remainingSeconds": remaining,
         "hourlyRate": money(session.resource.hourly_rate),
         "total": money(session_total),
+        "resourceUsages": usage_json,
         "cafeteriaTotal": money(cafeteria_total),
         "subtotal": money(subtotal),
         "discountAmount": money(session.discount_amount),
@@ -396,7 +422,7 @@ def sessions(request):
     refresh_overdue()
     if request.method == "GET":
         status = request.GET.get("status", "active")
-        query = PlayingSession.objects.select_related("resource", "created_by", "completed_by").all()
+        query = PlayingSession.objects.select_related("resource", "created_by", "completed_by").prefetch_related("resource_usages__resource").all()
         if status == "active":
             query = query.filter(ended_at__isnull=True)
         elif status == "completed":
@@ -438,6 +464,9 @@ def sessions(request):
         duration_minutes=duration,
         created_by=request.user,
     )
+    SessionResourceUsage.objects.create(
+        session=session, resource=resource, started_at=session.started_at, hourly_rate=resource.hourly_rate
+    )
     audit(request, "Started session", resource.name)
     return JsonResponse(session_json(session), status=201)
 
@@ -469,10 +498,46 @@ def session_detail(request, session_id):
         session.started_at += paused_for
         if session.ends_at:
             session.ends_at += paused_for
+        open_usage = session.resource_usages.filter(ended_at__isnull=True).first()
+        if open_usage:
+            open_usage.started_at += paused_for
+            open_usage.save(update_fields=["started_at"])
         session.paused_at = None
         session.status = "active"
         session.save(update_fields=["started_at", "ends_at", "paused_at", "status"])
         audit(request, "Resumed session", session.resource.name)
+    elif action == "change_resource":
+        if session.ended_at:
+            return error("This session is already closed", 409)
+        if session.paused_at:
+            return error("Resume the session before changing its resource", 409)
+        try:
+            resource = Resource.objects.get(pk=data.get("resourceId"), is_active=True)
+        except (Resource.DoesNotExist, TypeError, ValueError):
+            return error("Choose an active resource")
+        if resource.id == session.resource_id:
+            return error("Choose a different resource")
+        if resource.sessions.filter(ended_at__isnull=True).exists():
+            return error("That resource already has an active session", 409)
+        now = timezone.now()
+        with transaction.atomic():
+            open_usage = session.resource_usages.filter(ended_at__isnull=True).first()
+            if open_usage:
+                open_usage.ended_at = now
+                open_usage.save(update_fields=["ended_at"])
+            else:
+                # Preserve a legacy session's first portion when it is changed.
+                SessionResourceUsage.objects.create(
+                    session=session, resource=session.resource, started_at=session.started_at,
+                    ended_at=now, hourly_rate=session.resource.hourly_rate,
+                )
+            SessionResourceUsage.objects.create(
+                session=session, resource=resource, started_at=now, hourly_rate=resource.hourly_rate
+            )
+            previous_name = session.resource.name
+            session.resource = resource
+            session.save(update_fields=["resource"])
+        audit(request, "Changed session resource", f"{previous_name} to {resource.name}")
     elif action == "extend":
         try:
             minutes = int(data.get("durationMinutes"))
@@ -502,6 +567,15 @@ def session_detail(request, session_id):
                 if session.ends_at:
                     session.ends_at += paused_for
                 session.paused_at = None
+                open_usage = session.resource_usages.filter(ended_at__isnull=True).first()
+                if open_usage:
+                    open_usage.started_at += paused_for
+                    open_usage.save(update_fields=["started_at"])
+            if not session.resource_usages.exists():
+                SessionResourceUsage.objects.create(
+                    session=session, resource=session.resource, started_at=session.started_at,
+                    hourly_rate=session.resource.hourly_rate,
+                )
             session_total = session.total + sum((order.subtotal for order in session.orders.all()), Decimal("0.00"))
             try:
                 discount_amount, discount_type, discount_value, discount_reason = invoice_discount(data, session_total)
@@ -509,6 +583,7 @@ def session_detail(request, session_id):
             except ValueError as exc:
                 return error(str(exc))
             session.ended_at = timezone.now()
+            session.resource_usages.filter(ended_at__isnull=True).update(ended_at=session.ended_at)
             session.status = "completed"
             session.payment_status = "paid"
             session.payment_method = payment_method
@@ -524,7 +599,7 @@ def session_detail(request, session_id):
             )
             audit(request, "Closed session", f"{session.resource.name} (discount {money(discount_amount)})")
     else:
-        return error("Action must be pause, resume, stop, or extend")
+        return error("Action must be pause, resume, stop, extend, or change_resource")
     return JsonResponse(session_json(session))
 
 
@@ -767,7 +842,9 @@ def order_items(request, order_id):
 def paid_sales(from_date, to_date):
     start, _ = report_day_bounds(from_date)
     _, end = report_day_bounds(to_date)
-    sessions_query = PlayingSession.objects.select_related("resource", "created_by", "completed_by").filter(
+    sessions_query = PlayingSession.objects.select_related("resource", "created_by", "completed_by").prefetch_related(
+        "orders__items", "resource_usages__resource"
+    ).filter(
         status="completed",
         payment_status="paid",
         ended_at__gte=start,
@@ -779,20 +856,25 @@ def paid_sales(from_date, to_date):
     return sessions_query, orders_query
 
 
+def session_invoice_subtotal(session):
+    """The settled invoice amount before its invoice-level discount."""
+    return session.total + sum((order.subtotal for order in session.orders.all()), Decimal("0.00"))
+
+
 def dashboard(request):
     refresh_overdue()
     today = current_report_date()
     sessions_query, orders_query = paid_sales(today, today)
-    gross_session_revenue = sum((item.total for item in sessions_query), Decimal("0.00"))
+    gross_session_revenue = sum((session_invoice_subtotal(item) for item in sessions_query), Decimal("0.00"))
     gross_cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
     discount_total = sum((item.discount_amount for item in sessions_query), Decimal("0.00")) + sum((item.discount_amount for item in orders_query), Decimal("0.00"))
     session_revenue = gross_session_revenue - sum((item.discount_amount for item in sessions_query), Decimal("0.00"))
     cafeteria_revenue = gross_cafeteria_revenue - sum((item.discount_amount for item in orders_query), Decimal("0.00"))
     cash = sum(
-        (item.total - item.discount_amount for item in sessions_query if item.payment_method == "cash"), Decimal("0.00")
+        (session_invoice_subtotal(item) - item.discount_amount for item in sessions_query if item.payment_method == "cash"), Decimal("0.00")
     ) + sum((item.subtotal - item.discount_amount for item in orders_query if item.payment_method == "cash"), Decimal("0.00"))
     cliq = sum(
-        (item.total - item.discount_amount for item in sessions_query if item.payment_method == "cliq"), Decimal("0.00")
+        (session_invoice_subtotal(item) - item.discount_amount for item in sessions_query if item.payment_method == "cliq"), Decimal("0.00")
     ) + sum((item.subtotal - item.discount_amount for item in orders_query if item.payment_method == "cliq"), Decimal("0.00"))
     recent_sessions = PlayingSession.objects.select_related("resource").filter(
         status="completed", payment_status="paid"
@@ -803,7 +885,7 @@ def dashboard(request):
             "id": item.id,
             "type": "session",
             "label": item.resource.name,
-            "amount": money(item.total - item.discount_amount),
+            "amount": money(session_invoice_subtotal(item) - item.discount_amount),
             "paymentMethod": item.payment_method,
             "createdAt": item.ended_at.isoformat() if item.ended_at else item.started_at.isoformat(),
         }
@@ -844,7 +926,7 @@ def profit_report(request):
     if from_date > to_date:
         return error("from must be before to")
     sessions_query, orders_query = paid_sales(from_date, to_date)
-    gross_session_revenue = sum((item.total for item in sessions_query), Decimal("0.00"))
+    gross_session_revenue = sum((session_invoice_subtotal(item) for item in sessions_query), Decimal("0.00"))
     gross_cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
     session_discounts = sum((item.discount_amount for item in sessions_query), Decimal("0.00"))
     cafeteria_discounts = sum((item.discount_amount for item in orders_query), Decimal("0.00"))
@@ -860,7 +942,7 @@ def profit_report(request):
         }
     )
     for item in sessions_query:
-        net_amount = item.total - item.discount_amount
+        net_amount = session_invoice_subtotal(item) - item.discount_amount
         payment_totals[item.payment_method] += net_amount
         day = report_date_for(item.ended_at).isoformat()
         by_day[day]["revenue"] += net_amount

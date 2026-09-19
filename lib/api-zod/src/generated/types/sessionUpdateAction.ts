@@ -14,4 +14,5 @@ export const SessionUpdateAction = {
   resume: 'resume',
   stop: 'stop',
   extend: 'extend',
+  change_resource: 'change_resource',
 } as const;

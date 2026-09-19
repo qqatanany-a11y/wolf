@@ -11,6 +11,7 @@ import type { SessionUpdatePaymentMethod } from './sessionUpdatePaymentMethod';
 
 export interface SessionUpdate {
   action?: SessionUpdateAction;
+  resourceId?: number;
   /**
      * @minimum 1
      * @nullable

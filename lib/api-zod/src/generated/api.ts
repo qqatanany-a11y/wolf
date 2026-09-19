@@ -129,6 +129,16 @@ export const ListSessionsResponseItem = zod.object({
   "remainingSeconds": zod.number().int().nullish(),
   "hourlyRate": zod.number(),
   "total": zod.number(),
+  "resourceUsages": zod.array(zod.object({
+  "resourceId": zod.number().int(),
+  "resourceName": zod.string(),
+  "resourceKind": zod.enum(['snooker', 'billiards', 'playstation']),
+  "startedAt": zod.coerce.date(),
+  "endedAt": zod.coerce.date().nullish(),
+  "elapsedSeconds": zod.number().int(),
+  "hourlyRate": zod.number(),
+  "total": zod.number()
+})).optional(),
   "cafeteriaTotal": zod.number(),
   "subtotal": zod.number().optional(),
   "discountAmount": zod.number().optional(),
@@ -205,6 +215,16 @@ export const CreateSessionResponse = zod.object({
   "remainingSeconds": zod.number().int().nullish(),
   "hourlyRate": zod.number(),
   "total": zod.number(),
+  "resourceUsages": zod.array(zod.object({
+  "resourceId": zod.number().int(),
+  "resourceName": zod.string(),
+  "resourceKind": zod.enum(['snooker', 'billiards', 'playstation']),
+  "startedAt": zod.coerce.date(),
+  "endedAt": zod.coerce.date().nullish(),
+  "elapsedSeconds": zod.number().int(),
+  "hourlyRate": zod.number(),
+  "total": zod.number()
+})).optional(),
   "cafeteriaTotal": zod.number(),
   "subtotal": zod.number().optional(),
   "discountAmount": zod.number().optional(),
@@ -263,7 +283,8 @@ export const updateSessionBodyNotesMax = 1000;
 
 
 export const UpdateSessionBody = zod.object({
-  "action": zod.enum(['pause', 'resume', 'stop', 'extend']).optional(),
+  "action": zod.enum(['pause', 'resume', 'stop', 'extend', 'change_resource']).optional(),
+  "resourceId": zod.number().int().optional(),
   "durationMinutes": zod.number().int().min(1).nullish(),
   "paymentMethod": zod.union([zod.literal('cash'),zod.literal('cliq'),zod.literal(null)]).nullish(),
   "discountType": zod.enum(['amount', 'percentage']).default(updateSessionBodyDiscountTypeDefault),
@@ -295,6 +316,16 @@ export const UpdateSessionResponse = zod.object({
   "remainingSeconds": zod.number().int().nullish(),
   "hourlyRate": zod.number(),
   "total": zod.number(),
+  "resourceUsages": zod.array(zod.object({
+  "resourceId": zod.number().int(),
+  "resourceName": zod.string(),
+  "resourceKind": zod.enum(['snooker', 'billiards', 'playstation']),
+  "startedAt": zod.coerce.date(),
+  "endedAt": zod.coerce.date().nullish(),
+  "elapsedSeconds": zod.number().int(),
+  "hourlyRate": zod.number(),
+  "total": zod.number()
+})).optional(),
   "cafeteriaTotal": zod.number(),
   "subtotal": zod.number().optional(),
   "discountAmount": zod.number().optional(),

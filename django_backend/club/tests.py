@@ -7,7 +7,7 @@ from django.test import override_settings
 
 from django.contrib.auth.models import User
 
-from .models import Order, PlayingSession, Resource
+from .models import Order, PlayingSession, Resource, SessionResourceUsage
 from .views import invoice_discount, paid_sales, report_date_for
 
 
@@ -59,6 +59,30 @@ class PlayingSessionBillingTests(TestCase):
                 session = self.session_for_duration(elapsed_seconds)
                 self.assertEqual(session.billed_seconds, billed_seconds)
                 self.assertEqual(session.total, total)
+
+    def test_changed_resource_has_a_separate_rate_and_bill_line(self):
+        second_resource = Resource.objects.create(
+            name="Second Table", kind="billiards", hourly_rate=Decimal("20.00")
+        )
+        ended_at = timezone.now()
+        session = PlayingSession.objects.create(
+            resource=second_resource, mode="open", ended_at=ended_at
+        )
+        SessionResourceUsage.objects.create(
+            session=session,
+            resource=self.resource,
+            started_at=ended_at - timedelta(minutes=61),
+            ended_at=ended_at - timedelta(minutes=31),
+            hourly_rate=Decimal("10.00"),
+        )
+        SessionResourceUsage.objects.create(
+            session=session,
+            resource=second_resource,
+            started_at=ended_at - timedelta(minutes=31),
+            ended_at=ended_at,
+            hourly_rate=Decimal("20.00"),
+        )
+        self.assertEqual(session.total, Decimal("25.00"))
 
 
 class ReportDayTests(TestCase):

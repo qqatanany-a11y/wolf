@@ -101,7 +101,51 @@ class PlayingSession(models.Model):
 
     @property
     def total(self):
-        return (Decimal(self.billed_seconds) / Decimal(3600) * self.resource.hourly_rate).quantize(
+        usages = list(self.resource_usages.select_related("resource"))
+        if not usages:
+            # Sessions created before resource usage tracking retain the
+            # original billing behaviour.
+            return (Decimal(self.billed_seconds) / Decimal(3600) * self.resource.hourly_rate).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        return sum((usage.total for usage in usages), Decimal("0.00"))
+
+
+class SessionResourceUsage(models.Model):
+    """A billable part of a session, retained when its resource is changed."""
+
+    session = models.ForeignKey(
+        PlayingSession, on_delete=models.CASCADE, related_name="resource_usages"
+    )
+    resource = models.ForeignKey(Resource, on_delete=models.PROTECT, related_name="session_usages")
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    hourly_rate = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ["started_at", "id"]
+
+    @property
+    def elapsed_seconds(self):
+        from django.utils import timezone
+
+        end = self.ended_at or self.session.ended_at or self.session.paused_at or timezone.now()
+        if self.session.mode == "limited" and self.session.ends_at:
+            end = min(end, self.session.ends_at)
+        return max(0, int((end - self.started_at).total_seconds()))
+
+    @property
+    def billed_seconds(self):
+        half_hour_seconds = 30 * 60
+        return max(
+            half_hour_seconds,
+            ((self.elapsed_seconds + half_hour_seconds - 1) // half_hour_seconds)
+            * half_hour_seconds,
+        )
+
+    @property
+    def total(self):
+        return (Decimal(self.billed_seconds) / Decimal(3600) * self.hourly_rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
 

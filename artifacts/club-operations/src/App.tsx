@@ -161,6 +161,16 @@ const sessionBilledSeconds = (session: any, now: number) => {
 const sessionPlayingTotal = (session: any, now: number) =>
   (sessionBilledSeconds(session, now) / 3600) * (session.hourlyRate ?? 0);
 const liveSessionPlayingTotal = (session: any, now: number) => {
+  if (session.resourceUsages?.length) {
+    return session.resourceUsages.reduce((sum: number, usage: any) => {
+      const started = timestamp(usage.startedAt);
+      const ended = timestamp(usage.endedAt) ?? timestamp(session.endedAt) ?? timestamp(session.pausedAt) ?? now;
+      const limitedEnd = session.mode === "limited" ? timestamp(session.endsAt) : null;
+      const elapsed = Math.max(0, Math.floor((Math.min(ended, limitedEnd ?? ended) - (started ?? ended)) / 1000));
+      const billed = Math.max(1800, Math.ceil(elapsed / 1800) * 1800);
+      return sum + (billed / 3600) * (usage.hourlyRate ?? 0);
+    }, 0);
+  }
   const calculatedTotal = sessionPlayingTotal(session, now);
   return session.mode === "limited"
     ? calculatedTotal
@@ -201,9 +211,30 @@ const withLiveSessionValues = (session: any, now: number) => {
     elapsedSeconds,
     remainingSeconds: sessionRemainingSeconds(session, now),
     total,
+    resourceUsages: (session.resourceUsages ?? []).map((usage: any) => {
+      const started = timestamp(usage.startedAt);
+      const ended = timestamp(usage.endedAt) ?? timestamp(session.endedAt) ?? timestamp(session.pausedAt) ?? now;
+      const limitedEnd = session.mode === "limited" ? timestamp(session.endsAt) : null;
+      const elapsedSeconds = Math.max(0, Math.floor((Math.min(ended, limitedEnd ?? ended) - (started ?? ended)) / 1000));
+      const billedSeconds = Math.max(1800, Math.ceil(elapsedSeconds / 1800) * 1800);
+      return { ...usage, elapsedSeconds, total: (billedSeconds / 3600) * (usage.hourlyRate ?? 0) };
+    }),
     grandTotal: sessionGrandTotal(session, total),
   };
 };
+
+function ResourceUsageBillLines({ session }: { session: any }) {
+  const usages = session.resourceUsages ?? [{ resourceName: session.resourceName, elapsedSeconds: session.elapsedSeconds, hourlyRate: session.hourlyRate, total: session.total }];
+  return <>
+    <div className="border-t border-border pt-3 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Playing details</div>
+    {usages.map((usage: any, index: number) => (
+      <div key={`${usage.resourceId ?? usage.resourceName}-${index}`} className="rounded-md bg-muted/35 p-2.5">
+        <div className="flex justify-between font-bold"><span>{usage.resourceName}</span><span>{money(usage.total)}</span></div>
+        <div className="mt-1 flex justify-between text-muted-foreground"><span>{secondsLabel(usage.elapsedSeconds)} · {money(usage.hourlyRate)}/hr</span><span>Table {index + 1}</span></div>
+      </div>
+    ))}
+  </>;
+}
 const withLiveResourceValues = (resource: any, now: number) => ({
   ...resource,
   status: isResourceOverdue(resource, now) ? "overdue" : resource.status,
@@ -1931,14 +1962,18 @@ function LiveSessionBillDialog({
 }) {
   const client = useQueryClient();
   const updateSession = useUpdateSession();
+  const { data: resources = [] } = useListResources({
+    query: { queryKey: getListResourcesQueryKey() },
+  });
   const [current, setCurrent] = useState(session);
   const now = useCurrentTime();
   const [showPayment, setShowPayment] = useState(false);
   const [showDiscountDialog, setShowDiscountDialog] = useState(false);
   const [invoiceNotes, setInvoiceNotes] = useState(session.notes ?? "");
   const [changingProduct, setChangingProduct] = useState<number | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [actionStep, setActionStep] = useState<
-    "choices" | "extend" | "details"
+    "choices" | "extend" | "change-resource" | "details"
   >(allowSettlement ? "choices" : "details");
   const [extensionMinutes, setExtensionMinutes] = useState("30");
   const [extensionError, setExtensionError] = useState("");
@@ -1958,6 +1993,20 @@ function LiveSessionBillDialog({
       }),
       {},
     );
+  const activeProducts = products.filter((product: any) => product.isActive);
+  const categories = useMemo(
+    () =>
+      Array.from(
+        new Set(activeProducts.map((product: any) => String(product.category ?? "Other"))),
+      ).sort((first, second) => {
+        const rankDifference = cafeteriaCategoryRank(first) - cafeteriaCategoryRank(second);
+        return rankDifference || first.localeCompare(second);
+      }),
+    [activeProducts],
+  );
+  const visibleProducts = activeProducts.filter(
+    (product: any) => categoryFilter === "all" || product.category === categoryFilter,
+  );
   const changeQuantity = async (productId: number, quantityDelta: 1 | -1) => {
     setChangingProduct(productId);
     try {
@@ -2045,6 +2094,20 @@ function LiveSessionBillDialog({
       },
     );
   };
+  const changeResource = (resourceId: number) =>
+    updateSession.mutate(
+      { id: current.id, data: { action: "change_resource", resourceId } } as any,
+      {
+        onSuccess: (updated: any) => {
+          setCurrent(updated);
+          onUpdated(updated);
+          client.invalidateQueries({ queryKey: getListSessionsQueryKey() });
+          client.invalidateQueries({ queryKey: getListResourcesQueryKey() });
+          client.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+          setActionStep("details");
+        },
+      },
+    );
   if (allowSettlement && actionStep === "choices")
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/35 p-4">
@@ -2094,6 +2157,13 @@ function LiveSessionBillDialog({
               Extend time
             </button>
             <button
+              disabled={Boolean(current.pausedAt) || updateSession.isPending}
+              onClick={() => setActionStep("change-resource")}
+              className="rounded-lg border border-border py-3 text-sm font-bold hover:border-primary hover:bg-muted disabled:opacity-50"
+            >
+              Change table / device
+            </button>
+            <button
               data-testid={`button-add-cafeteria-items-${current.id}`}
               onClick={() => setActionStep("details")}
               className="flex items-center justify-center gap-2 rounded-lg border border-primary py-3 text-sm font-bold text-primary hover:bg-primary/5"
@@ -2106,6 +2176,30 @@ function LiveSessionBillDialog({
             >
               End table and show bill
             </button>
+          </div>
+        </div>
+      </div>
+    );
+  if (allowSettlement && actionStep === "change-resource")
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/35 p-4">
+        <div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl fade-up">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Session #{current.id}</div>
+              <h2 className="mt-1 text-xl font-extrabold">Change table / device</h2>
+            </div>
+            <button aria-label="Back to session details" onClick={() => setActionStep("choices")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">Time already used stays on {current.resourceName}; the new resource starts a separate line at its own hourly rate.</p>
+          <div className="mt-5 grid gap-2">
+            {(resources as any[]).filter((resource) => resource.id !== current.resourceId && !resource.activeSessionId).map((resource) => (
+              <button key={resource.id} disabled={updateSession.isPending} onClick={() => changeResource(resource.id)} className="flex items-center justify-between rounded-lg border border-border px-4 py-3 text-left text-sm font-bold hover:border-primary hover:bg-muted disabled:opacity-50">
+                <span>{resource.name} <span className="text-xs font-normal capitalize text-muted-foreground">({resource.kind})</span></span>
+                <span className="text-xs text-primary">{money(resource.hourlyRate)}/hr</span>
+              </button>
+            ))}
+            {(resources as any[]).filter((resource) => resource.id !== current.resourceId && !resource.activeSessionId).length === 0 && <p className="text-sm text-muted-foreground">No other available tables or devices.</p>}
           </div>
         </div>
       </div>
@@ -2203,11 +2297,31 @@ function LiveSessionBillDialog({
         </div>
         <div className="grid max-h-[70vh] overflow-y-auto md:grid-cols-[1fr_0.9fr]">
           <div className="border-b border-border p-5 md:border-b-0 md:border-r">
-            <div className="text-xs font-extrabold">Cafeteria items</div>
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-extrabold">Cafeteria items</div>
+              <span className="text-[10px] text-muted-foreground">{visibleProducts.length} items</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              <button
+                aria-pressed={categoryFilter === "all"}
+                onClick={() => setCategoryFilter("all")}
+                className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${categoryFilter === "all" ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:text-foreground"}`}
+              >
+                All
+              </button>
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  aria-pressed={categoryFilter === category}
+                  onClick={() => setCategoryFilter(category)}
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${categoryFilter === category ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:text-foreground"}`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              {products
-                .filter((product: any) => product.isActive)
-                .map((product: any) => {
+              {visibleProducts.map((product: any) => {
                   const quantity = quantities[product.id] ?? 0;
                   return (
                     <div
@@ -2257,14 +2371,7 @@ function LiveSessionBillDialog({
               <StatusBadge status={current.status} />
             </div>
             <div className="mt-4 space-y-3 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Playing time</span>
-                <span>{secondsLabel(current.elapsedSeconds)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Play rate</span>
-                <span>{money(current.hourlyRate)}/hr</span>
-              </div>
+              <ResourceUsageBillLines session={current} />
               <div className="flex justify-between font-bold">
                 <span>Play total</span>
                 <span>{money(current.total)}</span>
@@ -2408,14 +2515,7 @@ function CompletedSessionInvoiceDialog({
               <span className="font-bold capitalize">{session.paymentMethod ?? session.paymentStatus ?? "Settled"}</span>
             </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Playing time</span>
-            <span>{secondsLabel(session.elapsedSeconds)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Play rate</span>
-            <span>{money(session.hourlyRate)}/hr</span>
-          </div>
+          <ResourceUsageBillLines session={session} />
           <div className="flex justify-between font-bold">
             <span>Play total</span>
             <span>{money(session.total)}</span>
@@ -3206,9 +3306,14 @@ function InvoicesPage() {
     { query: { queryKey: getListOrdersQueryKey() } },
   );
   const period = useMemo(() => {
-    const end = new Date(`${selectedDate}T00:00:00`);
-    const start = new Date(end);
-    if (range === "weekly") start.setDate(start.getDate() - 6);
+    const selected = new Date(`${selectedDate}T00:00:00`);
+    const start = new Date(selected);
+    const end = new Date(selected);
+    if (range === "weekly") {
+      // Club weeks run Sunday through Saturday, not a rolling seven-day period.
+      start.setDate(selected.getDate() - selected.getDay());
+      end.setDate(start.getDate() + 6);
+    }
     if (range === "monthly") start.setDate(1);
     return {
       start: dateKey(start),
@@ -3471,14 +3576,7 @@ function InvoicesPage() {
               </div>
               {selected.invoiceType === "session" && (
                 <>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Playing time</span>
-                    <span>{secondsLabel(selected.elapsedSeconds)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Play rate</span>
-                    <span>{money(selected.hourlyRate)}/hr</span>
-                  </div>
+                  <ResourceUsageBillLines session={selected} />
                   <div className="flex justify-between font-bold">
                     <span>Play total</span>
                     <span>{money(selected.total)}</span>

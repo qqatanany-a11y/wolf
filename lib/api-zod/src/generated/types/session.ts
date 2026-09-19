@@ -11,6 +11,7 @@ import type { SessionMode } from './sessionMode';
 import type { SessionPaymentMethod } from './sessionPaymentMethod';
 import type { SessionPaymentStatus } from './sessionPaymentStatus';
 import type { SessionResourceKind } from './sessionResourceKind';
+import type { SessionResourceUsagesItem } from './sessionResourceUsagesItem';
 import type { SessionStatus } from './sessionStatus';
 
 export interface Session {
@@ -34,6 +35,7 @@ export interface Session {
   remainingSeconds?: number | null;
   hourlyRate: number;
   total: number;
+  resourceUsages?: SessionResourceUsagesItem[];
   cafeteriaTotal: number;
   subtotal?: number;
   discountAmount?: number;

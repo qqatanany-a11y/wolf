@@ -44,6 +44,8 @@ export * from './sessionMode';
 export * from './sessionPaymentMethod';
 export * from './sessionPaymentStatus';
 export * from './sessionResourceKind';
+export * from './sessionResourceUsagesItem';
+export * from './sessionResourceUsagesItemResourceKind';
 export * from './sessionStatus';
 export * from './sessionUpdate';
 export * from './sessionUpdateAction';
