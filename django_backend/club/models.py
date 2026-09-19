@@ -108,7 +108,50 @@ class PlayingSession(models.Model):
             return (Decimal(self.billed_seconds) / Decimal(3600) * self.resource.hourly_rate).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
-        return sum((usage.total for usage in usages), Decimal("0.00"))
+        return sum(self.resource_usage_totals(usages).values(), Decimal("0.00"))
+
+    def resource_usage_totals(self, usages=None):
+        """Return the bill amount for each resource portion of this session.
+
+        Consecutive portions at the same rate share their rounding period. This
+        lets a customer move between equally priced tables without restarting
+        the minimum half-hour billing period, while a changed rate begins a
+        distinct billable portion.
+        """
+        usages = list(usages) if usages is not None else list(
+            self.resource_usages.select_related("resource")
+        )
+        totals = {usage.id: Decimal("0.00") for usage in usages}
+        index = 0
+        half_hour_seconds = 30 * 60
+        while index < len(usages):
+            group = [usages[index]]
+            while (
+                index + len(group) < len(usages)
+                and usages[index + len(group)].hourly_rate == group[0].hourly_rate
+            ):
+                group.append(usages[index + len(group)])
+            elapsed = sum((usage.elapsed_seconds for usage in group), 0)
+            billed = max(
+                half_hour_seconds,
+                ((elapsed + half_hour_seconds - 1) // half_hour_seconds) * half_hour_seconds,
+            )
+            group_total = (
+                Decimal(billed) / Decimal(3600) * group[0].hourly_rate
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            # Keep the invoice detailed per resource while preserving the one
+            # shared rounded total. Any rounding remainder goes to the final line.
+            assigned = Decimal("0.00")
+            for usage in group[:-1]:
+                share = (
+                    group_total * Decimal(usage.elapsed_seconds) / Decimal(elapsed)
+                    if elapsed else Decimal("0.00")
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                totals[usage.id] = share
+                assigned += share
+            totals[group[-1].id] = group_total - assigned
+            index += len(group)
+        return totals
 
 
 class SessionResourceUsage(models.Model):

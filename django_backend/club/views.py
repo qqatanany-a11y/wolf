@@ -231,6 +231,7 @@ def session_json(session):
     cafeteria_total = sum((order.subtotal for order in cafeteria_orders), Decimal("0.00"))
     subtotal = session_total + cafeteria_total
     usages = list(session.resource_usages.select_related("resource"))
+    usage_totals = session.resource_usage_totals(usages) if usages else {}
     usage_json = [
         {
             "resourceId": usage.resource_id,
@@ -240,7 +241,7 @@ def session_json(session):
             "endedAt": usage.ended_at.isoformat() if usage.ended_at else None,
             "elapsedSeconds": usage.elapsed_seconds,
             "hourlyRate": money(usage.hourly_rate),
-            "total": money(usage.total),
+            "total": money(usage_totals[usage.id]),
         }
         for usage in usages
     ]

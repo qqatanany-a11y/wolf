@@ -170,16 +170,42 @@ const sessionBilledSeconds = (session: any, now: number) => {
 };
 const sessionPlayingTotal = (session: any, now: number) =>
   (sessionBilledSeconds(session, now) / 3600) * (session.hourlyRate ?? 0);
+const liveResourceUsageLines = (session: any, now: number) => {
+  const usages = session.resourceUsages ?? [];
+  const lines = usages.map((usage: any) => {
+    const started = timestamp(usage.startedAt);
+    const ended = timestamp(usage.endedAt) ?? timestamp(session.endedAt) ?? timestamp(session.pausedAt) ?? now;
+    const limitedEnd = session.mode === "limited" ? timestamp(session.endsAt) : null;
+    return {
+      ...usage,
+      elapsedSeconds: Math.max(0, Math.floor((Math.min(ended, limitedEnd ?? ended) - (started ?? ended)) / 1000)),
+      total: 0,
+    };
+  });
+  for (let index = 0; index < lines.length;) {
+    const group = [lines[index]];
+    while (index + group.length < lines.length && lines[index + group.length].hourlyRate === group[0].hourlyRate) {
+      group.push(lines[index + group.length]);
+    }
+    const elapsed = group.reduce((sum, line) => sum + line.elapsedSeconds, 0);
+    const billedSeconds = Math.max(1800, Math.ceil(elapsed / 1800) * 1800);
+    const groupTotal = (billedSeconds / 3600) * (group[0].hourlyRate ?? 0);
+    let assigned = 0;
+    group.slice(0, -1).forEach((line) => {
+      line.total = elapsed ? Math.round((groupTotal * line.elapsedSeconds / elapsed) * 100) / 100 : 0;
+      assigned += line.total;
+    });
+    group[group.length - 1].total = Math.round((groupTotal - assigned) * 100) / 100;
+    index += group.length;
+  }
+  return lines;
+};
 const liveSessionPlayingTotal = (session: any, now: number) => {
   if (session.resourceUsages?.length) {
-    return session.resourceUsages.reduce((sum: number, usage: any) => {
-      const started = timestamp(usage.startedAt);
-      const ended = timestamp(usage.endedAt) ?? timestamp(session.endedAt) ?? timestamp(session.pausedAt) ?? now;
-      const limitedEnd = session.mode === "limited" ? timestamp(session.endsAt) : null;
-      const elapsed = Math.max(0, Math.floor((Math.min(ended, limitedEnd ?? ended) - (started ?? ended)) / 1000));
-      const billed = Math.max(1800, Math.ceil(elapsed / 1800) * 1800);
-      return sum + (billed / 3600) * (usage.hourlyRate ?? 0);
-    }, 0);
+    return liveResourceUsageLines(session, now).reduce(
+      (sum: number, usage: any) => sum + usage.total,
+      0,
+    );
   }
   const calculatedTotal = sessionPlayingTotal(session, now);
   return session.mode === "limited"
@@ -221,14 +247,7 @@ const withLiveSessionValues = (session: any, now: number) => {
     elapsedSeconds,
     remainingSeconds: sessionRemainingSeconds(session, now),
     total,
-    resourceUsages: (session.resourceUsages ?? []).map((usage: any) => {
-      const started = timestamp(usage.startedAt);
-      const ended = timestamp(usage.endedAt) ?? timestamp(session.endedAt) ?? timestamp(session.pausedAt) ?? now;
-      const limitedEnd = session.mode === "limited" ? timestamp(session.endsAt) : null;
-      const elapsedSeconds = Math.max(0, Math.floor((Math.min(ended, limitedEnd ?? ended) - (started ?? ended)) / 1000));
-      const billedSeconds = Math.max(1800, Math.ceil(elapsedSeconds / 1800) * 1800);
-      return { ...usage, elapsedSeconds, total: (billedSeconds / 3600) * (usage.hourlyRate ?? 0) };
-    }),
+    resourceUsages: liveResourceUsageLines(session, now),
     grandTotal: sessionGrandTotal(session, total),
   };
 };

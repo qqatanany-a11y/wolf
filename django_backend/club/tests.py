@@ -84,6 +84,28 @@ class PlayingSessionBillingTests(TestCase):
         )
         self.assertEqual(session.total, Decimal("25.00"))
 
+    def test_same_rate_resource_change_continues_the_rounding_period(self):
+        second_resource = Resource.objects.create(
+            name="Same Rate Table", kind="billiards", hourly_rate=Decimal("3.00")
+        )
+        ended_at = timezone.now()
+        session = PlayingSession.objects.create(
+            resource=second_resource, mode="open", ended_at=ended_at
+        )
+        first = SessionResourceUsage.objects.create(
+            session=session, resource=self.resource,
+            started_at=ended_at - timedelta(minutes=39),
+            ended_at=ended_at - timedelta(minutes=1), hourly_rate=Decimal("3.00"),
+        )
+        second = SessionResourceUsage.objects.create(
+            session=session, resource=second_resource,
+            started_at=ended_at - timedelta(minutes=1), ended_at=ended_at,
+            hourly_rate=Decimal("3.00"),
+        )
+        self.assertEqual(session.total, Decimal("3.00"))
+        line_totals = session.resource_usage_totals()
+        self.assertEqual(line_totals[first.id] + line_totals[second.id], Decimal("3.00"))
+
 
 class ReportDayTests(TestCase):
     def aware(self, day, clock):
