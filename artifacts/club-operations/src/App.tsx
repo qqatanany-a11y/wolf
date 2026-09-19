@@ -102,6 +102,15 @@ const today = () => {
   const date = new Date();
   return dateKey(date);
 };
+const currentWeekBounds = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  // Club reporting weeks run Sunday through Saturday.
+  start.setDate(start.getDate() - start.getDay());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  return { from: dateKey(start), to: dateKey(end) };
+};
 const cafeteriaCategoryOrder = [
   "cold drinks",
   "hot drinks",
@@ -4091,23 +4100,8 @@ function CounterCafeteriaPage() {
 
 function ReportsPage() {
   const [, setLocation] = useLocation();
-  useEffect(() => {
-    const openInvoices = (event: MouseEvent) => {
-      const target =
-        event.target instanceof HTMLElement
-          ? event.target.closest('[data-testid^="report-day-"]')
-          : null;
-      if (!target) return;
-      const date = target
-        .getAttribute("data-testid")
-        ?.replace("report-day-", "");
-      if (date) setLocation(`/reports/invoices?date=${date}`);
-    };
-    document.addEventListener("click", openInvoices);
-    return () => document.removeEventListener("click", openInvoices);
-  }, [setLocation]);
-  const [from, setFrom] = useState(today());
-  const [to, setTo] = useState(today());
+  const [from, setFrom] = useState(() => currentWeekBounds().from);
+  const [to, setTo] = useState(() => currentWeekBounds().to);
   const [auditEntries, setAuditEntries] = useState<any[]>([]);
   const params = useMemo(() => ({ from, to }), [from, to]);
   const { data, isLoading, isError, refetch } = useGetProfitReport(params, {
@@ -4205,6 +4199,7 @@ function ReportsPage() {
                       <tr
                         key={day.date}
                         data-testid={`report-day-${day.date}`}
+                        onClick={() => setLocation(`/reports/invoices?date=${day.date}`)}
                         className="cursor-pointer hover:bg-muted/35"
                       >
                         <td className="px-5 py-4 font-bold">
