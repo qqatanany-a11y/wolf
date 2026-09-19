@@ -9,6 +9,7 @@ import {
   Route,
   Switch,
   useLocation,
+  useSearch,
   Router as WouterRouter,
 } from "wouter";
 import {
@@ -3293,7 +3294,12 @@ function CafeteriaPage() {
 }
 
 function InvoicesPage() {
-  const [location, setLocation] = useLocation();
+  const [, setLocation] = useLocation();
+  const search = useSearch();
+  const requestedDate = useMemo(
+    () => new URLSearchParams(search).get("date"),
+    [search],
+  );
   const [range, setRange] = useState<"daily" | "weekly" | "monthly">("daily");
   const [paymentFilter, setPaymentFilter] = useState<"all" | "cash" | "cliq">(
     "all",
@@ -3302,10 +3308,13 @@ function InvoicesPage() {
     "all" | "session" | "cafeteria"
   >("all");
   const [selected, setSelected] = useState<any | null>(null);
-  const [selectedDate, setSelectedDate] = useState(
-    () =>
-      new URLSearchParams(location.split("?")[1] ?? "").get("date") ?? today(),
-  );
+  const [selectedDate, setSelectedDate] = useState(() => requestedDate ?? today());
+  useEffect(() => {
+    if (requestedDate) {
+      setSelectedDate(requestedDate);
+      setRange("daily");
+    }
+  }, [requestedDate]);
   const { data: sessions = [], isLoading: sessionsLoading } = useListSessions(
     { status: "completed" },
     { query: { queryKey: getListSessionsQueryKey({ status: "completed" }) } },
