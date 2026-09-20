@@ -510,6 +510,7 @@ function PasswordForm({
 }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const values = Object.fromEntries(
@@ -3360,7 +3361,10 @@ function PaidInvoiceEditDialog({
     if (!reason.trim()) { setError("A reason for this edit is required."); return; }
     if (discountAmount > 0 && !discountReason.trim()) { setError("A discount reason is required."); return; }
     if (targetTotal !== "" && (!Number.isFinite(Number(targetTotal)) || Number(targetTotal) < 0)) { setError("Correct final total must be a non-negative number."); return; }
-    if (!window.confirm("Save these invoice changes?")) return;
+    setConfirming(true);
+  };
+  const confirmSave = async () => {
+    setConfirming(false);
     setSaving(true); setError("");
     try {
       await manageApi(`/reports/invoices/${invoice.invoiceType === "session" ? "session" : "order"}/${invoice.id}/adjustments`, "PATCH", {
@@ -3381,6 +3385,7 @@ function PaidInvoiceEditDialog({
         <div className="p-5"><div className="text-xs font-extrabold">Detailed bill</div><div className="mt-4 space-y-3 text-xs">{invoice.invoiceType === "session" && <><ResourceUsageBillLines session={invoice}/><div className="flex justify-between font-bold"><span>Play total</span><span>{money(playTotal)}</span></div></>}<div className="border-t border-border pt-3 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Cafeteria</div>{items.map((item) => <div key={item.productId} className="flex justify-between"><span>{item.quantity} x {item.productName}</span><span>{money(item.quantity * item.unitPrice)}</span></div>)}<div className="flex justify-between font-bold"><span>Cafeteria total</span><span>{money(cafeteriaTotal)}</span></div><div className="flex justify-between border-t border-border pt-3 text-sm font-extrabold"><span>Final total</span><span>{money(finalTotal)}</span></div></div><label className="mt-5 block border-t border-border pt-4 text-xs font-bold">Invoice notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={1000} rows={3} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-normal" /></label><div className="mt-4 grid grid-cols-2 gap-2"><label className="text-xs font-bold">Payment<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"><option value="cash">Cash</option><option value="cliq">CliQ</option></select></label><label className="text-xs font-bold">Discount<input type="number" min="0" step="0.01" value={discount} onChange={(event) => setDiscount(event.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" /></label></div>{discountAmount > 0 && <input value={discountReason} onChange={(event) => setDiscountReason(event.target.value)} placeholder="Discount reason" className="mt-2 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />}<label className="mt-3 block text-xs font-bold">Correct final total <span className="font-normal text-muted-foreground">(optional)</span><input type="number" min="0" step="0.01" value={targetTotal} onChange={(event) => setTargetTotal(event.target.value)} placeholder={String(calculatedTotal)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" /></label><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason for this edit (required)" maxLength={500} className="mt-3 min-h-16 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />{error && <p className="mt-2 text-xs font-semibold text-destructive">{error}</p>}<div className="mt-3 grid grid-cols-2 gap-2"><button onClick={onClose} disabled={saving} className="rounded-lg border border-border py-2.5 text-xs font-bold">Cancel</button><button onClick={save} disabled={saving} className="rounded-lg bg-destructive py-2.5 text-xs font-bold text-destructive-foreground">{saving ? "Saving..." : `Save bill ${money(finalTotal)}`}</button></div></div>
       </div>
     </div>
+    {confirming && <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/45 p-4"><div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl"><div className="text-base font-extrabold">Save invoice changes?</div><p className="mt-2 text-xs text-muted-foreground">The bill total, payment method, and reports will be updated.</p><div className="mt-5 grid grid-cols-2 gap-2"><button type="button" onClick={() => setConfirming(false)} className="rounded-lg border border-border py-2.5 text-xs font-bold">Cancel</button><button type="button" onClick={confirmSave} className="rounded-lg bg-primary py-2.5 text-xs font-bold text-primary-foreground">Confirm save</button></div></div></div>}
   </div>;
 }
 
