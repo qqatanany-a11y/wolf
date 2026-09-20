@@ -241,6 +241,10 @@ const isResourceOverdue = (resource: any, now: number) => {
   return resource.status === "active" && endsAt !== null && endsAt <= now;
 };
 const withLiveSessionValues = (session: any, now: number) => {
+  // A paid/completed session is an invoice, not a live timer.  Never run the
+  // clock calculation over it: doing so mutates the shared query cache every
+  // second and can make historical invoice amounts drift on screen.
+  if (session.endedAt) return session;
   const elapsedSeconds = sessionElapsedSeconds(session, now);
   const total = liveSessionPlayingTotal(session, now);
   return {
@@ -3311,6 +3315,75 @@ function CafeteriaPage() {
   );
 }
 
+function PaidInvoiceEditDialog({
+  invoice,
+  products,
+  onClose,
+  onSaved,
+}: {
+  invoice: any;
+  products: any[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [items, setItems] = useState<any[]>(() =>
+    invoice.invoiceType === "session"
+      ? (invoice.cafeteriaOrders ?? []).flatMap((order: any) => order.items ?? [])
+      : invoice.items ?? [],
+  );
+  const [category, setCategory] = useState("all");
+  const [paymentMethod, setPaymentMethod] = useState(invoice.paymentMethod === "cliq" ? "cliq" : "cash");
+  const [notes, setNotes] = useState(invoice.notes ?? "");
+  const [discount, setDiscount] = useState(String(invoice.discountAmount ?? 0));
+  const [discountReason, setDiscountReason] = useState(invoice.discountReason ?? "");
+  const [targetTotal, setTargetTotal] = useState("");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const activeProducts = products.filter((product: any) => product.isActive);
+  const categories = Array.from(new Set(activeProducts.map((product: any) => product.category))).sort() as string[];
+  const visibleProducts = activeProducts.filter((product: any) => category === "all" || product.category === category);
+  const quantityFor = (productId: number) => items.find((item) => item.productId === productId)?.quantity ?? 0;
+  const changeQuantity = (product: any, delta: 1 | -1) => setItems((current) => {
+    const existing = current.find((item) => item.productId === product.id);
+    if (!existing && delta < 0) return current;
+    if (!existing) return [...current, { productId: product.id, productName: product.name, quantity: 1, unitPrice: product.price }];
+    if (existing.quantity + delta <= 0) return current.filter((item) => item.productId !== product.id);
+    return current.map((item) => item.productId === product.id ? { ...item, quantity: item.quantity + delta } : item);
+  });
+  const cafeteriaTotal = moneySum(items.map((item) => Number(item.quantity) * Number(item.unitPrice)));
+  const playTotal = invoice.invoiceType === "session" ? Number(invoice.total ?? 0) : 0;
+  const discountAmount = Number(discount || 0);
+  const calculatedTotal = Math.max(0, moneySum([playTotal, cafeteriaTotal, -discountAmount]));
+  const finalTotal = targetTotal === "" ? calculatedTotal : Number(targetTotal);
+  const save = async () => {
+    if (!reason.trim()) { setError("A reason for this edit is required."); return; }
+    if (discountAmount > 0 && !discountReason.trim()) { setError("A discount reason is required."); return; }
+    if (targetTotal !== "" && (!Number.isFinite(Number(targetTotal)) || Number(targetTotal) < 0)) { setError("Correct final total must be a non-negative number."); return; }
+    if (!window.confirm("Save these invoice changes?")) return;
+    setSaving(true); setError("");
+    try {
+      await manageApi(`/reports/invoices/${invoice.invoiceType === "session" ? "session" : "order"}/${invoice.id}/adjustments`, "PATCH", {
+        paymentMethod, notes, discountType: "amount", discountValue: discountAmount,
+        discountReason: discountReason.trim(), reason: reason.trim(),
+        targetTotal: targetTotal || undefined,
+        items: items.map((item) => ({ productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice })),
+      });
+      onSaved();
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not save invoice changes"); }
+    finally { setSaving(false); }
+  };
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/35 p-4">
+    <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+      <div className="flex items-start justify-between border-b border-border p-5"><div><div className="mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Edit paid bill</div><h2 className="mt-1 text-xl font-extrabold">{invoice.resourceName ?? invoice.name ?? `Cafeteria order #${invoice.id}`}</h2></div><button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button></div>
+      <div className="grid max-h-[70vh] overflow-y-auto md:grid-cols-[1fr_0.9fr]">
+        <div className="border-b border-border p-5 md:border-b-0 md:border-r"><div className="flex items-center justify-between"><div className="text-xs font-extrabold">Cafeteria items</div><span className="text-[10px] text-muted-foreground">{visibleProducts.length} items</span></div><div className="mt-3 flex flex-wrap gap-1.5"><button onClick={() => setCategory("all")} className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${category === "all" ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}>All</button>{categories.map((item) => <button key={item} onClick={() => setCategory(item)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${category === item ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"}`}>{item}</button>)}</div><div className="mt-3 grid grid-cols-2 gap-2">{visibleProducts.map((product: any) => { const quantity = quantityFor(product.id); return <div key={product.id} className="rounded-lg border border-border p-3"><div className="flex items-center justify-between"><Package size={15} className="text-primary"/><div className="flex overflow-hidden rounded-md border border-border"><button onClick={() => changeQuantity(product, -1)} disabled={!quantity} className="px-2 py-1 text-sm font-bold disabled:opacity-30">−</button><span className="min-w-7 border-x border-border px-1 py-1 text-center text-xs font-extrabold">{quantity}</span><button onClick={() => changeQuantity(product, 1)} className="px-2 py-1 text-sm font-bold text-primary">+</button></div></div><div className="mt-3 text-xs font-extrabold">{product.name}</div><div className="mt-1 text-[10px] text-muted-foreground">{money(product.price)}</div></div>; })}</div></div>
+        <div className="p-5"><div className="text-xs font-extrabold">Detailed bill</div><div className="mt-4 space-y-3 text-xs">{invoice.invoiceType === "session" && <><ResourceUsageBillLines session={invoice}/><div className="flex justify-between font-bold"><span>Play total</span><span>{money(playTotal)}</span></div></>}<div className="border-t border-border pt-3 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Cafeteria</div>{items.map((item) => <div key={item.productId} className="flex justify-between"><span>{item.quantity} x {item.productName}</span><span>{money(item.quantity * item.unitPrice)}</span></div>)}<div className="flex justify-between font-bold"><span>Cafeteria total</span><span>{money(cafeteriaTotal)}</span></div><div className="flex justify-between border-t border-border pt-3 text-sm font-extrabold"><span>Final total</span><span>{money(finalTotal)}</span></div></div><label className="mt-5 block border-t border-border pt-4 text-xs font-bold">Invoice notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={1000} rows={3} className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-normal" /></label><div className="mt-4 grid grid-cols-2 gap-2"><label className="text-xs font-bold">Payment<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"><option value="cash">Cash</option><option value="cliq">CliQ</option></select></label><label className="text-xs font-bold">Discount<input type="number" min="0" step="0.01" value={discount} onChange={(event) => setDiscount(event.target.value)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" /></label></div>{discountAmount > 0 && <input value={discountReason} onChange={(event) => setDiscountReason(event.target.value)} placeholder="Discount reason" className="mt-2 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />}<label className="mt-3 block text-xs font-bold">Correct final total <span className="font-normal text-muted-foreground">(optional)</span><input type="number" min="0" step="0.01" value={targetTotal} onChange={(event) => setTargetTotal(event.target.value)} placeholder={String(calculatedTotal)} className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" /></label><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason for this edit (required)" maxLength={500} className="mt-3 min-h-16 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />{error && <p className="mt-2 text-xs font-semibold text-destructive">{error}</p>}<div className="mt-3 grid grid-cols-2 gap-2"><button onClick={onClose} disabled={saving} className="rounded-lg border border-border py-2.5 text-xs font-bold">Cancel</button><button onClick={save} disabled={saving} className="rounded-lg bg-destructive py-2.5 text-xs font-bold text-destructive-foreground">{saving ? "Saving..." : `Save bill ${money(finalTotal)}`}</button></div></div>
+      </div>
+    </div>
+  </div>;
+}
+
 function InvoicesPage() {
   const client = useQueryClient();
   const [, setLocation] = useLocation();
@@ -3991,6 +4064,18 @@ function InvoicesPage() {
             </div>
           </div>
         </div>
+      )}
+      {selected && billMode === "edit" && (
+        <PaidInvoiceEditDialog
+          invoice={selected}
+          products={products}
+          onClose={() => setBillMode("menu")}
+          onSaved={async () => {
+            setSelected(null);
+            setBillMode("menu");
+            await client.invalidateQueries();
+          }}
+        />
       )}
     </>
   );
