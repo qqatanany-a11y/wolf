@@ -3313,6 +3313,7 @@ function CafeteriaPage() {
 }
 
 function InvoicesPage() {
+  const client = useQueryClient();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const requestedDate = useMemo(
@@ -3326,7 +3327,18 @@ function InvoicesPage() {
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<
     "all" | "session" | "cafeteria"
   >("all");
+  const [invoiceStateFilter, setInvoiceStateFilter] = useState<
+    "active" | "adjusted" | "deleted"
+  >("active");
   const [selected, setSelected] = useState<any | null>(null);
+  const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentReason, setAdjustmentReason] = useState("");
+  const [adjustmentError, setAdjustmentError] = useState("");
+  const [savingAdjustment, setSavingAdjustment] = useState(false);
+  const [showDeleteForm, setShowDeleteForm] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingInvoice, setDeletingInvoice] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => requestedDate ?? today());
   useEffect(() => {
     if (requestedDate) {
@@ -3370,11 +3382,7 @@ function InvoicesPage() {
         ...session,
         invoiceType: "session",
         invoiceDate: session.endedAt ?? session.startedAt,
-        invoiceTotal: Math.max(
-          0,
-          (session.subtotal ?? (session.total ?? 0) + (session.cafeteriaTotal ?? 0)) -
-            (session.discountAmount ?? 0),
-        ),
+        invoiceTotal: session.grandTotal ?? Math.max(0, (session.subtotal ?? (session.total ?? 0) + (session.cafeteriaTotal ?? 0)) - (session.discountAmount ?? 0)),
       })),
     ...orders
       .filter(
@@ -3387,11 +3395,7 @@ function InvoicesPage() {
         ...order,
         invoiceType: "cafeteria",
         invoiceDate: order.createdAt,
-        invoiceTotal: Math.max(
-          0,
-          (order.subtotal ?? (order.total ?? 0) + (order.discountAmount ?? 0)) -
-            (order.discountAmount ?? 0),
-        ),
+        invoiceTotal: order.total ?? Math.max(0, (order.subtotal ?? 0) - (order.discountAmount ?? 0)),
       })),
   ].sort(
     (a: any, b: any) =>
@@ -3401,7 +3405,10 @@ function InvoicesPage() {
     (invoice: any) =>
       (paymentFilter === "all" || invoice.paymentMethod === paymentFilter) &&
       (invoiceTypeFilter === "all" ||
-        invoice.invoiceType === invoiceTypeFilter),
+        invoice.invoiceType === invoiceTypeFilter) &&
+      (invoiceStateFilter === "active" && !invoice.deletedAt ||
+        (invoiceStateFilter === "adjusted" && !invoice.deletedAt && (invoice.adjustments?.length ?? 0) > 0) ||
+        (invoiceStateFilter === "deleted" && Boolean(invoice.deletedAt))),
   );
   // The summary always shows both payment methods for the selected period/type;
   // the payment buttons below only narrow the invoice list.
@@ -3422,6 +3429,58 @@ function InvoicesPage() {
       0,
     );
   const total = cashTotal + cliqTotal;
+  const saveAdjustment = async () => {
+    if (!selected) return;
+    const amount = Number(adjustmentAmount);
+    if (!Number.isFinite(amount) || amount === 0) {
+      setAdjustmentError("Enter a non-zero amount. Use a minus sign to reduce the invoice.");
+      return;
+    }
+    if (!adjustmentReason.trim()) {
+      setAdjustmentError("A reason for this adjustment is required.");
+      return;
+    }
+    setSavingAdjustment(true);
+    setAdjustmentError("");
+    try {
+      await manageApi(
+        `/reports/invoices/${selected.invoiceType === "session" ? "session" : "order"}/${selected.id}/adjustments`,
+        "POST",
+        { amount, reason: adjustmentReason.trim() },
+      );
+      setSelected(null);
+      setAdjustmentAmount("");
+      setAdjustmentReason("");
+      await client.invalidateQueries();
+    } catch (error) {
+      setAdjustmentError(error instanceof Error ? error.message : "Could not save the adjustment");
+    } finally {
+      setSavingAdjustment(false);
+    }
+  };
+  const deleteInvoice = async () => {
+    if (!selected || !deleteReason.trim()) {
+      setDeleteError("A deletion reason is required.");
+      return;
+    }
+    setDeletingInvoice(true);
+    setDeleteError("");
+    try {
+      await manageApi(
+        `/reports/invoices/${selected.invoiceType === "session" ? "session" : "order"}/${selected.id}/adjustments`,
+        "DELETE",
+        { reason: deleteReason.trim() },
+      );
+      setSelected(null);
+      setShowDeleteForm(false);
+      setDeleteReason("");
+      await client.invalidateQueries();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Could not delete the invoice");
+    } finally {
+      setDeletingInvoice(false);
+    }
+  };
   return (
     <>
       <PageHeading
@@ -3515,6 +3574,18 @@ function InvoicesPage() {
             </button>
           ))}
         </div>
+        <div className="flex overflow-hidden rounded-md border border-border bg-card">
+          {(["active", "adjusted", "deleted"] as const).map((state) => (
+            <button
+              key={state}
+              aria-pressed={invoiceStateFilter === state}
+              onClick={() => setInvoiceStateFilter(state)}
+              className={`border-r border-border px-3 py-2 text-xs font-bold last:border-r-0 ${invoiceStateFilter === state ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            >
+              {state === "active" ? "Active" : state === "adjusted" ? "Adjusted" : "Deleted"}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         {sessionsLoading || ordersLoading ? (
@@ -3552,6 +3623,11 @@ function InvoicesPage() {
                     {dateLabel(invoice.invoiceDate)} ·{" "}
                     {timeLabel(invoice.invoiceDate)} · {invoice.paymentMethod}
                   </div>
+                  {invoice.deletedAt && (
+                    <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-destructive">
+                      Deleted invoice
+                    </div>
+                  )}
                 </div>
                 <div className="hidden text-[10px] font-semibold text-muted-foreground sm:block">
                   Recorded by{" "}
@@ -3665,6 +3741,96 @@ function InvoicesPage() {
                 <div className="rounded-md bg-muted p-3 text-xs">
                   <span className="font-bold">Invoice notes: </span>
                   {selected.notes}
+                </div>
+              )}
+              {(selected.adjustments ?? []).length > 0 && (
+                <div className="space-y-2 rounded-md border border-border bg-muted/35 p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                    Super admin adjustments
+                  </div>
+                  {selected.adjustments.map((adjustment: any) => (
+                    <div key={adjustment.id} className="border-t border-border pt-2 first:border-t-0 first:pt-0">
+                      <div className={`flex justify-between font-bold ${adjustment.amount < 0 ? "text-destructive" : "text-emerald-700"}`}>
+                        <span>{adjustment.amount < 0 ? "Decrease" : "Increase"}</span>
+                        <span>{adjustment.amount < 0 ? "-" : "+"}{money(Math.abs(adjustment.amount))}</span>
+                      </div>
+                      <div className="mt-1 text-muted-foreground">{adjustment.reason}</div>
+                      <div className="mt-1 text-[10px] text-muted-foreground">By {adjustment.createdBy} · {dateLabel(adjustment.createdAt)} {timeLabel(adjustment.createdAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {selected.deletedAt && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs">
+                  <div className="font-bold text-destructive">Deleted invoice</div>
+                  <div className="mt-1">{selected.deletedReason}</div>
+                  <div className="mt-1 text-muted-foreground">Deleted by {selected.deletedBy} · {dateLabel(selected.deletedAt)} {timeLabel(selected.deletedAt)}</div>
+                </div>
+              )}
+              {!selected.deletedAt && <div className="space-y-2 rounded-md border border-primary/25 bg-primary/5 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
+                  Super admin invoice adjustment
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  This keeps the original invoice calculation unchanged. Enter a positive value to add or a negative value to subtract.
+                </p>
+                <input
+                  aria-label="Invoice adjustment amount"
+                  type="number"
+                  step="0.01"
+                  value={adjustmentAmount}
+                  onChange={(event) => setAdjustmentAmount(event.target.value)}
+                  placeholder="e.g. 2.50 or -2.50"
+                  className="w-full rounded-md border border-input bg-card px-3 py-2 text-xs"
+                />
+                <textarea
+                  aria-label="Invoice adjustment reason"
+                  value={adjustmentReason}
+                  onChange={(event) => setAdjustmentReason(event.target.value)}
+                  maxLength={500}
+                  placeholder="Reason for this adjustment (required)"
+                  className="min-h-16 w-full rounded-md border border-input bg-card px-3 py-2 text-xs"
+                />
+                {adjustmentError && <p role="alert" className="text-xs font-semibold text-destructive">{adjustmentError}</p>}
+                <button
+                  type="button"
+                  onClick={saveAdjustment}
+                  disabled={savingAdjustment}
+                  className="rounded-md bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-60"
+                >
+                  {savingAdjustment ? "Saving…" : "Save adjustment"}
+                </button>
+              </div>
+              }
+              {!selected.deletedAt && (
+                <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                  {!showDeleteForm ? (
+                    <button
+                      type="button"
+                      onClick={() => { setShowDeleteForm(true); setDeleteError(""); }}
+                      className="rounded-md border border-destructive/40 px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/10"
+                    >
+                      Delete invoice
+                    </button>
+                  ) : (
+                    <>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-destructive">Delete paid invoice</div>
+                      <p className="text-[11px] text-muted-foreground">This removes the invoice from reports and accounting totals. It remains visible only in the Deleted filter for audit purposes.</p>
+                      <textarea
+                        aria-label="Invoice deletion reason"
+                        value={deleteReason}
+                        onChange={(event) => setDeleteReason(event.target.value)}
+                        maxLength={500}
+                        placeholder="Deletion reason (required)"
+                        className="min-h-16 w-full rounded-md border border-input bg-card px-3 py-2 text-xs"
+                      />
+                      {deleteError && <p role="alert" className="text-xs font-semibold text-destructive">{deleteError}</p>}
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setShowDeleteForm(false)} disabled={deletingInvoice} className="rounded-md border border-border bg-card px-3 py-2 text-xs font-bold">Cancel</button>
+                        <button type="button" onClick={deleteInvoice} disabled={deletingInvoice} className="rounded-md bg-destructive px-3 py-2 text-xs font-bold text-white disabled:opacity-60">{deletingInvoice ? "Deleting…" : "Confirm deletion"}</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               <div className="flex justify-between border-t border-border pt-3 text-sm font-extrabold">

@@ -69,6 +69,12 @@ class PlayingSession(models.Model):
     discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     discount_reason = models.CharField(max_length=250, blank=True)
     notes = models.TextField(blank=True)
+    invoice_deleted_at = models.DateTimeField(null=True, blank=True)
+    invoice_deleted_reason = models.CharField(max_length=500, blank=True)
+    invoice_deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="deleted_session_invoices",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="created_playing_sessions",
@@ -219,6 +225,12 @@ class Order(models.Model):
     discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     discount_reason = models.CharField(max_length=250, blank=True)
     notes = models.TextField(blank=True)
+    invoice_deleted_at = models.DateTimeField(null=True, blank=True)
+    invoice_deleted_reason = models.CharField(max_length=500, blank=True)
+    invoice_deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="deleted_order_invoices",
+    )
     session = models.ForeignKey(
         PlayingSession,
         on_delete=models.PROTECT,
@@ -239,6 +251,46 @@ class Order(models.Model):
     @property
     def subtotal(self):
         return sum((item.line_total for item in self.items.all()), Decimal("0.00"))
+
+
+class InvoiceAdjustment(models.Model):
+    """An auditable manual correction to a paid invoice's final total.
+
+    The underlying session, order, and their normal billing calculation are
+    deliberately never changed by an adjustment.
+    """
+
+    session = models.ForeignKey(
+        PlayingSession, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="invoice_adjustments",
+    )
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="invoice_adjustments",
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.CharField(max_length=500)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name="invoice_adjustments",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(session__isnull=False) & models.Q(order__isnull=True))
+                    | (models.Q(session__isnull=True) & models.Q(order__isnull=False))
+                ),
+                name="invoice_adjustment_has_one_invoice",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(amount=Decimal("0.00")),
+                name="invoice_adjustment_amount_not_zero",
+            ),
+        ]
 
 
 

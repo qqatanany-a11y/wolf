@@ -13,7 +13,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import AccountSecurity, AuditLog, Order, Product, Resource, PlayingSession, SessionResourceUsage
+from .models import AccountSecurity, AuditLog, InvoiceAdjustment, Order, Product, Resource, PlayingSession, SessionResourceUsage
 from .models_order_items import OrderItem
 
 MONEY = Decimal("0.01")
@@ -230,6 +230,7 @@ def session_json(session):
     cafeteria_orders = list(session.orders.prefetch_related("items__product").all())
     cafeteria_total = sum((order.subtotal for order in cafeteria_orders), Decimal("0.00"))
     subtotal = session_total + cafeteria_total
+    adjustment_total = invoice_adjustment_total(session)
     usages = list(session.resource_usages.select_related("resource"))
     usage_totals = session.resource_usage_totals(usages) if usages else {}
     usage_json = [
@@ -280,7 +281,12 @@ def session_json(session):
         "discountValue": money(session.discount_value),
         "discountReason": session.discount_reason,
         "notes": session.notes,
-        "grandTotal": money(subtotal - session.discount_amount),
+        "deletedAt": session.invoice_deleted_at.isoformat() if session.invoice_deleted_at else None,
+        "deletedReason": session.invoice_deleted_reason,
+        "deletedBy": session.invoice_deleted_by.username if session.invoice_deleted_by else None,
+        "adjustmentTotal": money(adjustment_total),
+        "adjustments": [invoice_adjustment_json(item) for item in session.invoice_adjustments.all()],
+        "grandTotal": money(subtotal - session.discount_amount + adjustment_total),
         "cafeteriaOrderCount": len(cafeteria_orders),
         "cafeteriaOrders": [order_json(order) for order in cafeteria_orders],
         "paymentStatus": session.payment_status,
@@ -330,6 +336,7 @@ def product_json(product):
 def order_json(order):
     items = list(order.items.select_related("product"))
     subtotal = sum((item.line_total for item in items), Decimal("0.00"))
+    adjustment_total = invoice_adjustment_total(order)
     return {
         "id": order.id,
         "items": [
@@ -350,7 +357,12 @@ def order_json(order):
         "discountValue": money(order.discount_value),
         "discountReason": order.discount_reason,
         "notes": order.notes,
-        "total": money(subtotal - order.discount_amount),
+        "deletedAt": order.invoice_deleted_at.isoformat() if order.invoice_deleted_at else None,
+        "deletedReason": order.invoice_deleted_reason,
+        "deletedBy": order.invoice_deleted_by.username if order.invoice_deleted_by else None,
+        "adjustmentTotal": money(adjustment_total),
+        "adjustments": [invoice_adjustment_json(item) for item in order.invoice_adjustments.all()],
+        "total": money(subtotal - order.discount_amount + adjustment_total),
         "paymentMethod": order.payment_method,
         "sessionId": order.session_id,
         "createdAt": order.created_at.isoformat(),
@@ -848,11 +860,13 @@ def paid_sales(from_date, to_date):
     ).filter(
         status="completed",
         payment_status="paid",
+        invoice_deleted_at__isnull=True,
         ended_at__gte=start,
         ended_at__lt=end,
     )
     orders_query = Order.objects.select_related("created_by", "paid_by").prefetch_related("items__product").filter(
-        status="paid", session__isnull=True, created_at__gte=start, created_at__lt=end
+        status="paid", session__isnull=True, invoice_deleted_at__isnull=True,
+        created_at__gte=start, created_at__lt=end
     )
     return sessions_query, orders_query
 
@@ -862,6 +876,32 @@ def session_invoice_subtotal(session):
     return session.total + sum((order.subtotal for order in session.orders.all()), Decimal("0.00"))
 
 
+def invoice_adjustment_total(invoice):
+    """Return only manual invoice corrections; normal billing remains unchanged."""
+    adjustments = getattr(invoice, "_prefetched_objects_cache", {}).get("invoice_adjustments")
+    if adjustments is None:
+        adjustments = invoice.invoice_adjustments.all()
+    return sum((item.amount for item in adjustments), Decimal("0.00"))
+
+
+def session_invoice_total(session):
+    return session_invoice_subtotal(session) - session.discount_amount + invoice_adjustment_total(session)
+
+
+def order_invoice_total(order):
+    return order.subtotal - order.discount_amount + invoice_adjustment_total(order)
+
+
+def invoice_adjustment_json(adjustment):
+    return {
+        "id": adjustment.id,
+        "amount": money(adjustment.amount),
+        "reason": adjustment.reason,
+        "createdAt": adjustment.created_at.isoformat(),
+        "createdBy": adjustment.created_by.username if adjustment.created_by else "Deleted user",
+    }
+
+
 def dashboard(request):
     refresh_overdue()
     today = current_report_date()
@@ -869,24 +909,26 @@ def dashboard(request):
     gross_session_revenue = sum((session_invoice_subtotal(item) for item in sessions_query), Decimal("0.00"))
     gross_cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
     discount_total = sum((item.discount_amount for item in sessions_query), Decimal("0.00")) + sum((item.discount_amount for item in orders_query), Decimal("0.00"))
-    session_revenue = gross_session_revenue - sum((item.discount_amount for item in sessions_query), Decimal("0.00"))
-    cafeteria_revenue = gross_cafeteria_revenue - sum((item.discount_amount for item in orders_query), Decimal("0.00"))
+    session_revenue = sum((session_invoice_total(item) for item in sessions_query), Decimal("0.00"))
+    cafeteria_revenue = sum((order_invoice_total(item) for item in orders_query), Decimal("0.00"))
     cash = sum(
-        (session_invoice_subtotal(item) - item.discount_amount for item in sessions_query if item.payment_method == "cash"), Decimal("0.00")
-    ) + sum((item.subtotal - item.discount_amount for item in orders_query if item.payment_method == "cash"), Decimal("0.00"))
+        (session_invoice_total(item) for item in sessions_query if item.payment_method == "cash"), Decimal("0.00")
+    ) + sum((order_invoice_total(item) for item in orders_query if item.payment_method == "cash"), Decimal("0.00"))
     cliq = sum(
-        (session_invoice_subtotal(item) - item.discount_amount for item in sessions_query if item.payment_method == "cliq"), Decimal("0.00")
-    ) + sum((item.subtotal - item.discount_amount for item in orders_query if item.payment_method == "cliq"), Decimal("0.00"))
+        (session_invoice_total(item) for item in sessions_query if item.payment_method == "cliq"), Decimal("0.00")
+    ) + sum((order_invoice_total(item) for item in orders_query if item.payment_method == "cliq"), Decimal("0.00"))
     recent_sessions = PlayingSession.objects.select_related("resource").filter(
-        status="completed", payment_status="paid"
+        status="completed", payment_status="paid", invoice_deleted_at__isnull=True
     )[:5]
-    recent_orders = Order.objects.prefetch_related("items__product").filter(status="paid")[:5]
+    recent_orders = Order.objects.prefetch_related("items__product").filter(
+        status="paid", invoice_deleted_at__isnull=True
+    )[:5]
     activities = [
         {
             "id": item.id,
             "type": "session",
             "label": item.resource.name,
-            "amount": money(session_invoice_subtotal(item) - item.discount_amount),
+            "amount": money(session_invoice_total(item)),
             "paymentMethod": item.payment_method,
             "createdAt": item.ended_at.isoformat() if item.ended_at else item.started_at.isoformat(),
         }
@@ -896,7 +938,7 @@ def dashboard(request):
             "id": item.id,
             "type": "cafeteria",
             "label": "Cafeteria order",
-            "amount": money(item.subtotal - item.discount_amount),
+            "amount": money(order_invoice_total(item)),
             "paymentMethod": item.payment_method,
             "createdAt": item.created_at.isoformat(),
         }
@@ -931,8 +973,8 @@ def profit_report(request):
     gross_cafeteria_revenue = sum((item.subtotal for item in orders_query), Decimal("0.00"))
     session_discounts = sum((item.discount_amount for item in sessions_query), Decimal("0.00"))
     cafeteria_discounts = sum((item.discount_amount for item in orders_query), Decimal("0.00"))
-    session_revenue = gross_session_revenue - session_discounts
-    cafeteria_revenue = gross_cafeteria_revenue - cafeteria_discounts
+    session_revenue = sum((session_invoice_total(item) for item in sessions_query), Decimal("0.00"))
+    cafeteria_revenue = sum((order_invoice_total(item) for item in orders_query), Decimal("0.00"))
     payment_totals = {"cash": Decimal("0.00"), "cliq": Decimal("0.00")}
     by_day = defaultdict(
         lambda: {
@@ -943,14 +985,14 @@ def profit_report(request):
         }
     )
     for item in sessions_query:
-        net_amount = session_invoice_subtotal(item) - item.discount_amount
+        net_amount = session_invoice_total(item)
         payment_totals[item.payment_method] += net_amount
         day = report_date_for(item.ended_at).isoformat()
         by_day[day]["revenue"] += net_amount
         by_day[day][item.payment_method] += net_amount
         by_day[day]["discounts"] += item.discount_amount
     for item in orders_query:
-        net_amount = item.subtotal - item.discount_amount
+        net_amount = order_invoice_total(item)
         payment_totals[item.payment_method] += net_amount
         day = report_date_for(item.created_at).isoformat()
         by_day[day]["revenue"] += net_amount
@@ -980,3 +1022,65 @@ def profit_report(request):
             ],
         }
     )
+
+
+@csrf_exempt
+def invoice_adjustments(request, invoice_type, invoice_id):
+    """Adjust or soft-delete a paid invoice without changing its source data."""
+    if request.method not in {"POST", "DELETE"}:
+        return error("Method not allowed", 405)
+    if not is_super_admin(request.user):
+        return error("Only a super admin can adjust invoices", 403)
+    if invoice_type not in {"session", "order"}:
+        return error("Invoice type must be session or order")
+
+    model = PlayingSession if invoice_type == "session" else Order
+    try:
+        invoice = model.objects.get(pk=invoice_id)
+    except model.DoesNotExist:
+        return error("Invoice not found", 404)
+    if invoice_type == "session":
+        if invoice.status != "completed" or invoice.payment_status != "paid":
+            return error("Only paid invoices can be adjusted", 409)
+    elif invoice.status != "paid" or invoice.session_id is not None:
+        return error("Only paid standalone cafeteria invoices can be adjusted", 409)
+
+    data = body(request)
+    reason = str(data.get("reason", "")).strip()
+    if request.method == "DELETE":
+        if invoice.invoice_deleted_at:
+            return error("This invoice is already deleted", 409)
+        if not reason or len(reason) > 500:
+            return error("A deletion reason of up to 500 characters is required")
+        invoice.invoice_deleted_at = timezone.now()
+        invoice.invoice_deleted_reason = reason
+        invoice.invoice_deleted_by = request.user
+        invoice.save(update_fields=[
+            "invoice_deleted_at", "invoice_deleted_reason", "invoice_deleted_by"
+        ])
+        audit(request, "Deleted paid invoice", f"{invoice_type.title()} #{invoice.id}: {reason}")
+        return HttpResponse(status=204)
+
+    if invoice.invoice_deleted_at:
+        return error("Deleted invoices cannot be adjusted", 409)
+    try:
+        amount = Decimal(str(data.get("amount"))).quantize(MONEY)
+    except (ValueError, TypeError, ArithmeticError):
+        return error("Adjustment amount must be a valid number")
+    if not amount.is_finite() or amount == 0:
+        return error("Adjustment amount cannot be zero")
+    if not reason or len(reason) > 500:
+        return error("An adjustment reason of up to 500 characters is required")
+
+    adjustment = InvoiceAdjustment.objects.create(
+        **({"session": invoice} if invoice_type == "session" else {"order": invoice}),
+        amount=amount,
+        reason=reason,
+        created_by=request.user,
+    )
+    audit(
+        request,
+        "Adjusted paid invoice",
+        f"{invoice_type.title()} #{invoice.id}: {money(amount):+.2f} ({reason})",
+    )
+    return JsonResponse(invoice_adjustment_json(adjustment), status=201)

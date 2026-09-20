@@ -7,8 +7,8 @@ from django.test import override_settings
 
 from django.contrib.auth.models import User
 
-from .models import Order, PlayingSession, Resource, SessionResourceUsage
-from .views import invoice_discount, paid_sales, report_date_for
+from .models import InvoiceAdjustment, Order, PlayingSession, Resource, SessionResourceUsage
+from .views import invoice_discount, paid_sales, report_date_for, session_invoice_total
 
 
 class InvoiceDiscountTests(TestCase):
@@ -133,6 +133,80 @@ class ReportDayTests(TestCase):
         sessions, orders = paid_sales(day, day)
         self.assertEqual(list(sessions), [session])
         self.assertEqual(list(orders), [included_order])
+
+
+class InvoiceAdjustmentTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(username="mazen", password="test-password")
+        self.staff = User.objects.create_user(username="yazan", password="test-password")
+        resource = Resource.objects.create(name="Adjustment Table", kind="snooker", hourly_rate=Decimal("10.00"))
+        self.session = PlayingSession.objects.create(
+            resource=resource,
+            mode="open",
+            status="completed",
+            payment_status="paid",
+            payment_method="cash",
+            ended_at=timezone.now(),
+        )
+        PlayingSession.objects.filter(pk=self.session.pk).update(
+            started_at=timezone.now() - timedelta(minutes=30)
+        )
+        self.session.refresh_from_db()
+
+    def test_super_admin_can_add_an_audited_adjustment_without_changing_billing(self):
+        original_total = self.session.total
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            f"/api/reports/invoices/session/{self.session.id}/adjustments",
+            data={"amount": "-1.25", "reason": "Corrected cash change"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self.session.total, original_total)
+        self.assertEqual(session_invoice_total(self.session), original_total - Decimal("1.25"))
+        adjustment = InvoiceAdjustment.objects.get(session=self.session)
+        self.assertEqual(adjustment.created_by, self.admin)
+        self.assertEqual(adjustment.reason, "Corrected cash change")
+
+    def test_adjustment_requires_super_admin_and_reason(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            f"/api/reports/invoices/session/{self.session.id}/adjustments",
+            data={"amount": "1.00", "reason": "Test"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            f"/api/reports/invoices/session/{self.session.id}/adjustments",
+            data={"amount": "1.00", "reason": ""},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_super_admin_can_soft_delete_an_invoice_and_remove_it_from_sales(self):
+        report_day = timezone.localdate()
+        self.session.ended_at = timezone.make_aware(datetime.combine(report_day, time(16)))
+        self.session.save(update_fields=["ended_at"])
+        self.client.force_login(self.admin)
+        response = self.client.delete(
+            f"/api/reports/invoices/session/{self.session.id}/adjustments",
+            data={"reason": "Duplicate invoice"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 204)
+        self.session.refresh_from_db()
+        self.assertIsNotNone(self.session.invoice_deleted_at)
+        self.assertEqual(self.session.invoice_deleted_by, self.admin)
+        self.assertEqual(self.session.invoice_deleted_reason, "Duplicate invoice")
+        sessions, _ = paid_sales(report_day, report_day)
+        self.assertEqual(list(sessions), [])
+        response = self.client.post(
+            f"/api/reports/invoices/session/{self.session.id}/adjustments",
+            data={"amount": "1.00", "reason": "Should not work"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 409)
 
 
 @override_settings(CLUB_INITIAL_PASSWORD="InitialPass123!", CLUB_PASSWORD_RESET_CODE="recovery-code")
