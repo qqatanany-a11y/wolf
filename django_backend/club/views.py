@@ -1067,6 +1067,8 @@ def invoice_adjustments(request, invoice_type, invoice_id):
         return error("Deleted invoices cannot be adjusted", 409)
     if request.method == "PATCH":
         try:
+            if not reason or len(reason) > 500:
+                raise ValueError("An edit reason of up to 500 characters is required")
             payment_method = data.get("paymentMethod", invoice.payment_method)
             if payment_method not in {"cash", "cliq"}:
                 raise ValueError("Payment method must be cash or CliQ")
@@ -1113,13 +1115,11 @@ def invoice_adjustments(request, invoice_type, invoice_id):
                 current_total = session_invoice_total(invoice) if invoice_type == "session" else order_invoice_total(invoice)
                 adjustment_amount = (target_total - current_total).quantize(MONEY)
                 if adjustment_amount:
-                    if not reason or len(reason) > 500:
-                        raise ValueError("A reason is required when changing the final price")
                     InvoiceAdjustment.objects.create(
                         **({"session": invoice} if invoice_type == "session" else {"order": invoice}),
                         amount=adjustment_amount, reason=reason, created_by=request.user,
                     )
-            audit(request, "Edited paid invoice", f"{invoice_type.title()} #{invoice.id}")
+            audit(request, "Edited paid invoice", f"{invoice_type.title()} #{invoice.id}: {reason}")
         except (Product.DoesNotExist, KeyError, TypeError, ValueError, ArithmeticError) as exc:
             return error(str(exc) or "Invoice details are invalid")
         refreshed = model.objects.get(pk=invoice.id)

@@ -81,6 +81,8 @@ const money = (value: number | undefined) =>
     currency: "JOD",
     currencyDisplay: "code",
   }).format(value ?? 0);
+const moneySum = (values: number[]) =>
+  values.reduce((total, value) => total + Math.round((Number(value) || 0) * 100), 0) / 100;
 const dateLabel = (value: string) =>
   new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
     new Date(value),
@@ -3328,6 +3330,7 @@ function InvoicesPage() {
     "active" | "adjusted" | "deleted"
   >("active");
   const [selected, setSelected] = useState<any | null>(null);
+  const [billMode, setBillMode] = useState<"menu" | "view" | "edit" | "delete">("menu");
   const [adjustmentAmount, setAdjustmentAmount] = useState("");
   const [adjustmentReason, setAdjustmentReason] = useState("");
   const [adjustmentError, setAdjustmentError] = useState("");
@@ -3339,6 +3342,7 @@ function InvoicesPage() {
   const [editDiscountReason, setEditDiscountReason] = useState("");
   const [editFinalPrice, setEditFinalPrice] = useState("");
   const [editPriceReason, setEditPriceReason] = useState("");
+  const [editReason, setEditReason] = useState("");
   const [editItems, setEditItems] = useState<any[]>([]);
   const [editError, setEditError] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
@@ -3386,6 +3390,9 @@ function InvoicesPage() {
   const allInvoices = [
     ...sessions
       .filter((session: any) =>
+        session.status === "completed" &&
+        session.paymentStatus === "paid" &&
+        Boolean(session.paymentMethod) &&
         isInPeriod(session.endedAt ?? session.startedAt),
       )
       .map((session: any) => ({
@@ -3399,6 +3406,7 @@ function InvoicesPage() {
         (order: any) =>
           !order.sessionId &&
           order.status === "paid" &&
+          Boolean(order.paymentMethod) &&
           isInPeriod(order.createdAt),
       )
       .map((order: any) => ({
@@ -3429,17 +3437,13 @@ function InvoicesPage() {
   );
   const cashTotal = periodInvoices
     .filter((invoice: any) => invoice.paymentMethod === "cash")
-    .reduce(
-      (sum: number, invoice: any) => sum + invoice.invoiceTotal,
-      0,
-    );
+    .map((invoice: any) => invoice.invoiceTotal);
   const cliqTotal = periodInvoices
     .filter((invoice: any) => invoice.paymentMethod === "cliq")
-    .reduce(
-      (sum: number, invoice: any) => sum + invoice.invoiceTotal,
-      0,
-    );
-  const total = cashTotal + cliqTotal;
+    .map((invoice: any) => invoice.invoiceTotal);
+  const cashTotalAmount = moneySum(cashTotal);
+  const cliqTotalAmount = moneySum(cliqTotal);
+  const total = moneySum([cashTotalAmount, cliqTotalAmount]);
   const saveAdjustment = async () => {
     if (!selected) return;
     const amount = Number(adjustmentAmount);
@@ -3494,6 +3498,7 @@ function InvoicesPage() {
   };
   const openInvoice = (invoice: any) => {
     setSelected(invoice);
+    setBillMode("menu");
     setEditingInvoice(false);
     setShowDeleteForm(false);
     setEditPaymentMethod(invoice.paymentMethod === "cliq" ? "cliq" : "cash");
@@ -3502,6 +3507,7 @@ function InvoicesPage() {
     setEditDiscountReason(invoice.discountReason ?? "");
     setEditFinalPrice("");
     setEditPriceReason("");
+    setEditReason("");
     setEditItems(
       invoice.invoiceType === "session"
         ? (invoice.cafeteriaOrders ?? []).flatMap((order: any) => order.items ?? [])
@@ -3520,10 +3526,11 @@ function InvoicesPage() {
       setEditError("A discount reason is required.");
       return;
     }
-    if (editFinalPrice && !editPriceReason.trim()) {
-      setEditError("A reason is required when changing the final price.");
+    if (!editReason.trim()) {
+      setEditError("A reason for this edit is required.");
       return;
     }
+    if (!window.confirm("Save these invoice changes?")) return;
     setSavingEdit(true);
     setEditError("");
     try {
@@ -3537,7 +3544,7 @@ function InvoicesPage() {
           discountValue,
           discountReason: editDiscountReason.trim(),
           targetTotal: editFinalPrice || undefined,
-          reason: editPriceReason.trim(),
+          reason: editReason.trim(),
           items: editItems.map((item) => ({
             productId: item.productId,
             quantity: Number(item.quantity),
@@ -3595,7 +3602,7 @@ function InvoicesPage() {
               Cash total
             </div>
             <div className="tabular text-base font-extrabold text-emerald-700">
-              {money(cashTotal)}
+              {money(cashTotalAmount)}
             </div>
           </div>
           <div className="px-4 py-2">
@@ -3603,7 +3610,7 @@ function InvoicesPage() {
               CliQ total
             </div>
             <div className="tabular text-base font-extrabold text-primary">
-              {money(cliqTotal)}
+              {money(cliqTotalAmount)}
             </div>
           </div>
           <div className="bg-muted/50 px-4 py-2">
@@ -3739,6 +3746,7 @@ function InvoicesPage() {
               </button>
             </div>
             <div className="space-y-3 p-5 text-xs">
+              {billMode !== "menu" && <>
               <div className="rounded-md border border-border bg-muted/35 p-3">
                 <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
                   Audit trail
@@ -3816,7 +3824,14 @@ function InvoicesPage() {
                   {selected.notes}
                 </div>
               )}
-              {(selected.adjustments ?? []).length > 0 && (
+              {billMode === "menu" && (
+                <div className="grid gap-2">
+                  <button type="button" onClick={() => setBillMode("view")} className="rounded-md border border-border bg-card px-3 py-3 text-xs font-bold hover:bg-muted">Show bill</button>
+                  {!selected.deletedAt && <button type="button" onClick={() => { setEditingInvoice(true); setBillMode("edit"); }} className="rounded-md bg-primary px-3 py-3 text-xs font-bold text-primary-foreground">Edit bill</button>}
+                  {!selected.deletedAt && <button type="button" onClick={() => { setShowDeleteForm(true); setBillMode("delete"); }} className="rounded-md border border-destructive/40 px-3 py-3 text-xs font-bold text-destructive hover:bg-destructive/10">Delete bill</button>}
+                </div>
+              )}
+              {false && billMode === "view" && (selected.adjustments ?? []).length > 0 && (
                 <div className="space-y-2 rounded-md border border-border bg-muted/35 p-3">
                   <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
                     Super admin adjustments
@@ -3833,14 +3848,14 @@ function InvoicesPage() {
                   ))}
                 </div>
               )}
-              {selected.deletedAt && (
+              {billMode === "view" && selected.deletedAt && (
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs">
                   <div className="font-bold text-destructive">Deleted invoice</div>
                   <div className="mt-1">{selected.deletedReason}</div>
                   <div className="mt-1 text-muted-foreground">Deleted by {selected.deletedBy} · {dateLabel(selected.deletedAt)} {timeLabel(selected.deletedAt)}</div>
                 </div>
               )}
-              {!selected.deletedAt && (
+              {billMode === "edit" && !selected.deletedAt && (
                 <div className="space-y-2 rounded-md border border-border bg-muted/35 p-3">
                   {!editingInvoice ? (
                     <button
@@ -3885,17 +3900,17 @@ function InvoicesPage() {
                       </label>
                       <div className="border-t border-border pt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Final price only</div>
                       <input type="number" min="0" step="0.01" value={editFinalPrice} onChange={(event) => setEditFinalPrice(event.target.value)} className="w-full rounded-md border border-input bg-card px-3 py-2 text-xs" placeholder="Optional corrected final total" />
-                      <input value={editPriceReason} onChange={(event) => setEditPriceReason(event.target.value)} maxLength={500} className="w-full rounded-md border border-input bg-card px-3 py-2 text-xs" placeholder="Reason required for final-price change" />
+                      <textarea value={editReason} onChange={(event) => setEditReason(event.target.value)} maxLength={500} className="min-h-16 w-full rounded-md border border-input bg-card px-3 py-2 text-xs" placeholder="Reason for this edit (required)" />
                       {editError && <p role="alert" className="text-xs font-semibold text-destructive">{editError}</p>}
                       <div className="flex gap-2">
-                        <button type="button" onClick={() => setEditingInvoice(false)} disabled={savingEdit} className="rounded-md border border-border bg-card px-3 py-2 text-xs font-bold">Cancel</button>
+                        <button type="button" onClick={() => setBillMode("menu")} disabled={savingEdit} className="rounded-md border border-border bg-card px-3 py-2 text-xs font-bold">Cancel</button>
                         <button type="button" onClick={saveInvoiceEdit} disabled={savingEdit} className="rounded-md bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-60">{savingEdit ? "Saving…" : "Save invoice changes"}</button>
                       </div>
                     </>
                   )}
                 </div>
               )}
-              {!selected.deletedAt && <div className="space-y-2 rounded-md border border-primary/25 bg-primary/5 p-3">
+              {false && !selected.deletedAt && <div className="space-y-2 rounded-md border border-primary/25 bg-primary/5 p-3">
                 <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
                   Super admin invoice adjustment
                 </div>
@@ -3930,7 +3945,7 @@ function InvoicesPage() {
                 </button>
               </div>
               }
-              {!selected.deletedAt && (
+              {billMode === "delete" && !selected.deletedAt && (
                 <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
                   {!showDeleteForm ? (
                     <button
@@ -3954,7 +3969,7 @@ function InvoicesPage() {
                       />
                       {deleteError && <p role="alert" className="text-xs font-semibold text-destructive">{deleteError}</p>}
                       <div className="flex gap-2">
-                        <button type="button" onClick={() => setShowDeleteForm(false)} disabled={deletingInvoice} className="rounded-md border border-border bg-card px-3 py-2 text-xs font-bold">Cancel</button>
+                        <button type="button" onClick={() => setBillMode("menu")} disabled={deletingInvoice} className="rounded-md border border-border bg-card px-3 py-2 text-xs font-bold">Cancel</button>
                         <button type="button" onClick={deleteInvoice} disabled={deletingInvoice} className="rounded-md bg-destructive px-3 py-2 text-xs font-bold text-white disabled:opacity-60">{deletingInvoice ? "Deleting…" : "Confirm deletion"}</button>
                       </div>
                     </>
@@ -3965,6 +3980,14 @@ function InvoicesPage() {
                 <span>Invoice total</span>
                 <span>{money(selected.invoiceTotal)}</span>
               </div>
+              </>}
+              {billMode === "menu" && (
+                <div className="grid gap-2">
+                  <button type="button" onClick={() => setBillMode("view")} className="rounded-md border border-border bg-card px-3 py-3 text-xs font-bold hover:bg-muted">Show bill</button>
+                  {!selected.deletedAt && <button type="button" onClick={() => { setEditingInvoice(true); setBillMode("edit"); }} className="rounded-md bg-primary px-3 py-3 text-xs font-bold text-primary-foreground">Edit bill</button>}
+                  {!selected.deletedAt && <button type="button" onClick={() => { setShowDeleteForm(true); setBillMode("delete"); }} className="rounded-md border border-destructive/40 px-3 py-3 text-xs font-bold text-destructive hover:bg-destructive/10">Delete bill</button>}
+                </div>
+              )}
             </div>
           </div>
         </div>
