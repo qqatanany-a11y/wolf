@@ -208,6 +208,29 @@ class InvoiceAdjustmentTests(TestCase):
         )
         self.assertEqual(response.status_code, 409)
 
+    def test_edit_moves_invoice_payment_mix_and_can_set_final_price(self):
+        self.client.force_login(self.admin)
+        response = self.client.patch(
+            f"/api/reports/invoices/session/{self.session.id}/adjustments",
+            data={
+                "paymentMethod": "cliq",
+                "notes": "Payment corrected",
+                "discountType": "amount",
+                "discountValue": "0",
+                "discountReason": "",
+                "targetTotal": "4.00",
+                "reason": "Correct final price",
+                "items": [],
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.payment_method, "cliq")
+        self.assertEqual(self.session.notes, "Payment corrected")
+        self.assertEqual(session_invoice_total(self.session), Decimal("4.00"))
+        self.assertIsNotNone(self.session.invoice_edited_at)
+
 
 @override_settings(CLUB_INITIAL_PASSWORD="InitialPass123!", CLUB_PASSWORD_RESET_CODE="recovery-code")
 class AuthenticationTests(TestCase):

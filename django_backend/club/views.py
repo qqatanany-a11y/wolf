@@ -282,6 +282,7 @@ def session_json(session):
         "discountReason": session.discount_reason,
         "notes": session.notes,
         "deletedAt": session.invoice_deleted_at.isoformat() if session.invoice_deleted_at else None,
+        "editedAt": session.invoice_edited_at.isoformat() if session.invoice_edited_at else None,
         "deletedReason": session.invoice_deleted_reason,
         "deletedBy": session.invoice_deleted_by.username if session.invoice_deleted_by else None,
         "adjustmentTotal": money(adjustment_total),
@@ -358,6 +359,7 @@ def order_json(order):
         "discountReason": order.discount_reason,
         "notes": order.notes,
         "deletedAt": order.invoice_deleted_at.isoformat() if order.invoice_deleted_at else None,
+        "editedAt": order.invoice_edited_at.isoformat() if order.invoice_edited_at else None,
         "deletedReason": order.invoice_deleted_reason,
         "deletedBy": order.invoice_deleted_by.username if order.invoice_deleted_by else None,
         "adjustmentTotal": money(adjustment_total),
@@ -1027,7 +1029,7 @@ def profit_report(request):
 @csrf_exempt
 def invoice_adjustments(request, invoice_type, invoice_id):
     """Adjust or soft-delete a paid invoice without changing its source data."""
-    if request.method not in {"POST", "DELETE"}:
+    if request.method not in {"POST", "PATCH", "DELETE"}:
         return error("Method not allowed", 405)
     if not is_super_admin(request.user):
         return error("Only a super admin can adjust invoices", 403)
@@ -1063,6 +1065,65 @@ def invoice_adjustments(request, invoice_type, invoice_id):
 
     if invoice.invoice_deleted_at:
         return error("Deleted invoices cannot be adjusted", 409)
+    if request.method == "PATCH":
+        try:
+            payment_method = data.get("paymentMethod", invoice.payment_method)
+            if payment_method not in {"cash", "cliq"}:
+                raise ValueError("Payment method must be cash or CliQ")
+            invoice.notes = invoice_notes(data, invoice.notes)
+            if "discountValue" in data or "discountAmount" in data or "discountType" in data:
+                base_total = session_invoice_subtotal(invoice) if invoice_type == "session" else invoice.subtotal
+                discount_amount, discount_type, discount_value, discount_reason = invoice_discount(data, base_total)
+                invoice.discount_amount = discount_amount
+                invoice.discount_type = discount_type
+                invoice.discount_value = discount_value
+                invoice.discount_reason = discount_reason
+            invoice.payment_method = payment_method
+            invoice.invoice_edited_at = timezone.now()
+            if invoice_type == "order" and "name" in data:
+                invoice.name = str(data["name"]).strip()[:120]
+            items = data.get("items")
+            if items is not None:
+                if not isinstance(items, list):
+                    raise ValueError("Invoice items must be a list")
+                item_orders = list(invoice.orders.all()) if invoice_type == "session" else [invoice]
+                if not item_orders and items:
+                    item_orders = [Order.objects.create(session=invoice, status="paid", payment_method=payment_method, paid_by=request.user)]
+                normalized_items = []
+                for item in items:
+                    product = Product.objects.get(pk=item["productId"])
+                    quantity = int(item["quantity"])
+                    unit_price = Decimal(str(item["unitPrice"])).quantize(MONEY)
+                    if quantity < 1 or unit_price < 0 or not unit_price.is_finite():
+                        raise ValueError("Each item needs a positive quantity and non-negative price")
+                    normalized_items.append((product, quantity, unit_price))
+                if item_orders:
+                    with transaction.atomic():
+                        OrderItem.objects.filter(order__in=item_orders).delete()
+                        target_order = item_orders[0]
+                        for product, quantity, unit_price in normalized_items:
+                            OrderItem.objects.create(order=target_order, product=product, quantity=quantity, unit_price=unit_price)
+            with transaction.atomic():
+                invoice.save()
+                if invoice_type == "session":
+                    invoice.orders.filter(status="paid").update(payment_method=payment_method, paid_by=request.user)
+            target_total = data.get("targetTotal")
+            if target_total not in (None, ""):
+                target_total = Decimal(str(target_total)).quantize(MONEY)
+                current_total = session_invoice_total(invoice) if invoice_type == "session" else order_invoice_total(invoice)
+                adjustment_amount = (target_total - current_total).quantize(MONEY)
+                if adjustment_amount:
+                    if not reason or len(reason) > 500:
+                        raise ValueError("A reason is required when changing the final price")
+                    InvoiceAdjustment.objects.create(
+                        **({"session": invoice} if invoice_type == "session" else {"order": invoice}),
+                        amount=adjustment_amount, reason=reason, created_by=request.user,
+                    )
+            audit(request, "Edited paid invoice", f"{invoice_type.title()} #{invoice.id}")
+        except (Product.DoesNotExist, KeyError, TypeError, ValueError, ArithmeticError) as exc:
+            return error(str(exc) or "Invoice details are invalid")
+        refreshed = model.objects.get(pk=invoice.id)
+        return JsonResponse(session_json(refreshed) if invoice_type == "session" else order_json(refreshed))
     try:
         amount = Decimal(str(data.get("amount"))).quantize(MONEY)
     except (ValueError, TypeError, ArithmeticError):

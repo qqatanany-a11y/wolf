@@ -1596,9 +1596,6 @@ function LegacyOverdueAlert() {
       },
     },
   );
-  const { data: products = [] } = useListProducts({
-    query: { queryKey: getListProductsQueryKey() },
-  });
   const client = useQueryClient();
   const now = useCurrentTime();
   const notified = useRef(new Set<number>());
@@ -3335,6 +3332,16 @@ function InvoicesPage() {
   const [adjustmentReason, setAdjustmentReason] = useState("");
   const [adjustmentError, setAdjustmentError] = useState("");
   const [savingAdjustment, setSavingAdjustment] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(false);
+  const [editPaymentMethod, setEditPaymentMethod] = useState<"cash" | "cliq">("cash");
+  const [editNotes, setEditNotes] = useState("");
+  const [editDiscount, setEditDiscount] = useState("");
+  const [editDiscountReason, setEditDiscountReason] = useState("");
+  const [editFinalPrice, setEditFinalPrice] = useState("");
+  const [editPriceReason, setEditPriceReason] = useState("");
+  const [editItems, setEditItems] = useState<any[]>([]);
+  const [editError, setEditError] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const [showDeleteForm, setShowDeleteForm] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -3354,6 +3361,9 @@ function InvoicesPage() {
     undefined,
     { query: { queryKey: getListOrdersQueryKey() } },
   );
+  const { data: products = [] } = useListProducts({
+    query: { queryKey: getListProductsQueryKey() },
+  });
   const period = useMemo(() => {
     const selected = new Date(`${selectedDate}T00:00:00`);
     const start = new Date(selected);
@@ -3407,14 +3417,15 @@ function InvoicesPage() {
       (invoiceTypeFilter === "all" ||
         invoice.invoiceType === invoiceTypeFilter) &&
       (invoiceStateFilter === "active" && !invoice.deletedAt ||
-        (invoiceStateFilter === "adjusted" && !invoice.deletedAt && (invoice.adjustments?.length ?? 0) > 0) ||
+        (invoiceStateFilter === "adjusted" && !invoice.deletedAt && (Boolean(invoice.editedAt) || (invoice.adjustments?.length ?? 0) > 0)) ||
         (invoiceStateFilter === "deleted" && Boolean(invoice.deletedAt))),
   );
   // The summary always shows both payment methods for the selected period/type;
   // the payment buttons below only narrow the invoice list.
   const periodInvoices = allInvoices.filter(
     (invoice: any) =>
-      invoiceTypeFilter === "all" || invoice.invoiceType === invoiceTypeFilter,
+      !invoice.deletedAt &&
+      (invoiceTypeFilter === "all" || invoice.invoiceType === invoiceTypeFilter),
   );
   const cashTotal = periodInvoices
     .filter((invoice: any) => invoice.paymentMethod === "cash")
@@ -3479,6 +3490,68 @@ function InvoicesPage() {
       setDeleteError(error instanceof Error ? error.message : "Could not delete the invoice");
     } finally {
       setDeletingInvoice(false);
+    }
+  };
+  const openInvoice = (invoice: any) => {
+    setSelected(invoice);
+    setEditingInvoice(false);
+    setShowDeleteForm(false);
+    setEditPaymentMethod(invoice.paymentMethod === "cliq" ? "cliq" : "cash");
+    setEditNotes(invoice.notes ?? "");
+    setEditDiscount(String(invoice.discountValue ?? invoice.discountAmount ?? 0));
+    setEditDiscountReason(invoice.discountReason ?? "");
+    setEditFinalPrice("");
+    setEditPriceReason("");
+    setEditItems(
+      invoice.invoiceType === "session"
+        ? (invoice.cafeteriaOrders ?? []).flatMap((order: any) => order.items ?? [])
+        : invoice.items ?? [],
+    );
+    setEditError("");
+  };
+  const saveInvoiceEdit = async () => {
+    if (!selected) return;
+    const discountValue = Number(editDiscount || 0);
+    if (!Number.isFinite(discountValue) || discountValue < 0) {
+      setEditError("Discount must be a non-negative number.");
+      return;
+    }
+    if (discountValue > 0 && !editDiscountReason.trim()) {
+      setEditError("A discount reason is required.");
+      return;
+    }
+    if (editFinalPrice && !editPriceReason.trim()) {
+      setEditError("A reason is required when changing the final price.");
+      return;
+    }
+    setSavingEdit(true);
+    setEditError("");
+    try {
+      await manageApi(
+        `/reports/invoices/${selected.invoiceType === "session" ? "session" : "order"}/${selected.id}/adjustments`,
+        "PATCH",
+        {
+          paymentMethod: editPaymentMethod,
+          notes: editNotes,
+          discountType: "amount",
+          discountValue,
+          discountReason: editDiscountReason.trim(),
+          targetTotal: editFinalPrice || undefined,
+          reason: editPriceReason.trim(),
+          items: editItems.map((item) => ({
+            productId: item.productId,
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice),
+          })),
+        },
+      );
+      setSelected(null);
+      setEditingInvoice(false);
+      await client.invalidateQueries();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Could not save invoice changes");
+    } finally {
+      setSavingEdit(false);
     }
   };
   return (
@@ -3582,7 +3655,7 @@ function InvoicesPage() {
               onClick={() => setInvoiceStateFilter(state)}
               className={`border-r border-border px-3 py-2 text-xs font-bold last:border-r-0 ${invoiceStateFilter === state ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
             >
-              {state === "active" ? "Active" : state === "adjusted" ? "Adjusted" : "Deleted"}
+              {state === "active" ? "Active" : state === "adjusted" ? "Edited" : "Deleted"}
             </button>
           ))}
         </div>
@@ -3601,7 +3674,7 @@ function InvoicesPage() {
             {invoices.map((invoice: any) => (
               <button
                 key={`${invoice.invoiceType}-${invoice.id}`}
-                onClick={() => setSelected(invoice)}
+                onClick={() => openInvoice(invoice)}
                 className="flex w-full items-center gap-4 px-5 py-4 text-left hover:bg-muted"
               >
                 <div
@@ -3765,6 +3838,61 @@ function InvoicesPage() {
                   <div className="font-bold text-destructive">Deleted invoice</div>
                   <div className="mt-1">{selected.deletedReason}</div>
                   <div className="mt-1 text-muted-foreground">Deleted by {selected.deletedBy} · {dateLabel(selected.deletedAt)} {timeLabel(selected.deletedAt)}</div>
+                </div>
+              )}
+              {!selected.deletedAt && (
+                <div className="space-y-2 rounded-md border border-border bg-muted/35 p-3">
+                  {!editingInvoice ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditingInvoice(true)}
+                      className="rounded-md border border-border bg-card px-3 py-2 text-xs font-bold hover:bg-muted"
+                    >
+                      Edit invoice
+                    </button>
+                  ) : (
+                    <>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Edit invoice details</div>
+                      <label className="block text-xs font-bold">Payment method
+                        <select value={editPaymentMethod} onChange={(event) => setEditPaymentMethod(event.target.value as "cash" | "cliq")} className="mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-xs">
+                          <option value="cash">Cash</option>
+                          <option value="cliq">CliQ</option>
+                        </select>
+                      </label>
+                      <label className="block text-xs font-bold">Invoice notes
+                        <textarea value={editNotes} onChange={(event) => setEditNotes(event.target.value)} maxLength={1000} className="mt-1 min-h-16 w-full rounded-md border border-input bg-card px-3 py-2 text-xs" />
+                      </label>
+                      <div className="space-y-2 border-t border-border pt-2">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Cafeteria items</div>
+                        {editItems.map((item, index) => (
+                          <div key={`${item.productId}-${index}`} className="grid grid-cols-[1fr_54px_70px_auto] gap-1">
+                            <span className="truncate self-center text-xs">{item.productName}</span>
+                            <input aria-label={`Quantity for ${item.productName}`} type="number" min="1" value={item.quantity} onChange={(event) => setEditItems((items) => items.map((value, itemIndex) => itemIndex === index ? { ...value, quantity: event.target.value } : value))} className="w-full rounded-md border border-input bg-card px-2 py-1.5 text-xs" />
+                            <input aria-label={`Price for ${item.productName}`} type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => setEditItems((items) => items.map((value, itemIndex) => itemIndex === index ? { ...value, unitPrice: event.target.value } : value))} className="w-full rounded-md border border-input bg-card px-2 py-1.5 text-xs" />
+                            <button type="button" onClick={() => setEditItems((items) => items.filter((_, itemIndex) => itemIndex !== index))} className="px-1 text-xs font-bold text-destructive">Remove</button>
+                          </div>
+                        ))}
+                        <select aria-label="Add cafeteria item" defaultValue="" onChange={(event) => { const product = products.find((value: any) => String(value.id) === event.target.value); if (product) { setEditItems((items) => [...items, { productId: product.id, productName: product.name, quantity: 1, unitPrice: product.price }]); event.currentTarget.value = ""; } }} className="w-full rounded-md border border-input bg-card px-3 py-2 text-xs">
+                          <option value="">Add cafeteria item…</option>
+                          {products.filter((product: any) => product.isActive).map((product: any) => <option key={product.id} value={product.id}>{product.name}</option>)}
+                        </select>
+                      </div>
+                      <label className="block text-xs font-bold">Discount amount
+                        <input type="number" min="0" step="0.01" value={editDiscount} onChange={(event) => setEditDiscount(event.target.value)} className="mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-xs" />
+                      </label>
+                      <label className="block text-xs font-bold">Discount reason
+                        <input value={editDiscountReason} onChange={(event) => setEditDiscountReason(event.target.value)} maxLength={250} className="mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-xs" placeholder="Required when a discount is applied" />
+                      </label>
+                      <div className="border-t border-border pt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Final price only</div>
+                      <input type="number" min="0" step="0.01" value={editFinalPrice} onChange={(event) => setEditFinalPrice(event.target.value)} className="w-full rounded-md border border-input bg-card px-3 py-2 text-xs" placeholder="Optional corrected final total" />
+                      <input value={editPriceReason} onChange={(event) => setEditPriceReason(event.target.value)} maxLength={500} className="w-full rounded-md border border-input bg-card px-3 py-2 text-xs" placeholder="Reason required for final-price change" />
+                      {editError && <p role="alert" className="text-xs font-semibold text-destructive">{editError}</p>}
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setEditingInvoice(false)} disabled={savingEdit} className="rounded-md border border-border bg-card px-3 py-2 text-xs font-bold">Cancel</button>
+                        <button type="button" onClick={saveInvoiceEdit} disabled={savingEdit} className="rounded-md bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-60">{savingEdit ? "Saving…" : "Save invoice changes"}</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               {!selected.deletedAt && <div className="space-y-2 rounded-md border border-primary/25 bg-primary/5 p-3">

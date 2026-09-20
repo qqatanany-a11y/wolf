@@ -70,6 +70,7 @@ class PlayingSession(models.Model):
     discount_reason = models.CharField(max_length=250, blank=True)
     notes = models.TextField(blank=True)
     invoice_deleted_at = models.DateTimeField(null=True, blank=True)
+    invoice_edited_at = models.DateTimeField(null=True, blank=True)
     invoice_deleted_reason = models.CharField(max_length=500, blank=True)
     invoice_deleted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
@@ -226,6 +227,7 @@ class Order(models.Model):
     discount_reason = models.CharField(max_length=250, blank=True)
     notes = models.TextField(blank=True)
     invoice_deleted_at = models.DateTimeField(null=True, blank=True)
+    invoice_edited_at = models.DateTimeField(null=True, blank=True)
     invoice_deleted_reason = models.CharField(max_length=500, blank=True)
     invoice_deleted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
